@@ -1,0 +1,77 @@
+<UserControl x:Class="AttandenceDesktop.Views.DashboardView"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AttandenceDesktop.ViewModels"
+             mc:Ignorable="d"
+             x:DataType="vm:DashboardViewModel">
+    <Design.DataContext>
+        <vm:DashboardViewModel />
+    </Design.DataContext>
+
+    <ScrollViewer>
+        <StackPanel Margin="16" Spacing="12">
+            <!-- Header Date/Time -->
+            <DockPanel>
+                <TextBlock Text="Dashboard" Classes="header" DockPanel.Dock="Left" />
+                <StackPanel Orientation="Vertical" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                    <TextBlock Text="{Binding CurrentDate}" HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding CurrentTime}" HorizontalAlignment="Right" />
+                </StackPanel>
+            </DockPanel>
+
+            <!-- Info Cards -->
+            <UniformGrid Columns="3" Rows="1" Margin="0,12,0,12">
+                <!-- Employees -->
+                <Border Classes="card" Margin="0,0,8,0" Background="#1976D2">
+                    <StackPanel>
+                        <TextBlock Text="Employees" Foreground="White" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="{Binding EmployeeCount}" Foreground="White" FontSize="32" />
+                    </StackPanel>
+                </Border>
+                <!-- Present Today -->
+                <Border Classes="card" Margin="8,0,8,0" Background="#2E7D32">
+                    <StackPanel>
+                        <TextBlock Text="Present Today" Foreground="White" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="{Binding TodayAttendanceCount}" Foreground="White" FontSize="32" />
+                    </StackPanel>
+                </Border>
+                <!-- Departments -->
+                <Border Classes="card" Margin="8,0,0,0" Background="#0288D1">
+                    <StackPanel>
+                        <TextBlock Text="Departments" Foreground="White" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="{Binding DepartmentCount}" Foreground="White" FontSize="32" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Recent Attendance DataGrid -->
+            <TextBlock Text="Recent Attendance" Classes="subheader" />
+            <Border Classes="card" Background="White">
+                <DockPanel>
+                    <Button Content="Refresh" 
+                            Command="{Binding RefreshCommand}" 
+                            Classes="primary"
+                            HorizontalAlignment="Right" 
+                            DockPanel.Dock="Bottom"
+                            Margin="0,8,0,0" 
+                            Width="100" />
+                    <DataGrid ItemsSource="{Binding RecentAttendance}" 
+                              AutoGenerateColumns="False" 
+                              IsReadOnly="True"
+                              Height="300">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Employee" Binding="{Binding EmployeeName}" Width="*"/>
+                            <DataGridTextColumn Header="Department" Binding="{Binding DepartmentName}" Width="*"/>
+                            <DataGridTextColumn Header="Date" Binding="{Binding Date}" Width="100"/>
+                            <DataGridTextColumn Header="Check In" Binding="{Binding CheckIn}" Width="90"/>
+                            <DataGridTextColumn Header="Check Out" Binding="{Binding CheckOut}" Width="90"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl> 

@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AttandenceDesktop.ViewModels"
+             xmlns:converters="using:AttandenceDesktop.Converters"
+             xmlns:models="using:AttandenceDesktop.Models"
+             mc:Ignorable="d"
+             x:Class="AttandenceDesktop.Views.EmployeeView"
+             x:DataType="vm:EmployeeViewModel">
+
+    <Design.DataContext>
+        <vm:EmployeeViewModel/>
+    </Design.DataContext>
+
+    <UserControl.Resources>
+        <converters:NullToBoolConverter x:Key="NullToBool"/>
+    </UserControl.Resources>
+
+    <StackPanel Margin="16" Spacing="12">
+        <!-- Header and Action Buttons -->
+        <DockPanel>
+            <TextBlock Text="Employees" Classes="header" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Content="Add" Click="OnAddClick" Classes="success" Width="80" />
+                <Button Content="Edit" Click="OnEditClick" Classes="primary" Width="80"
+                        IsEnabled="{Binding SelectedEmployee, Converter={StaticResource NullToBool}}" />
+                <Button Content="Delete" Click="OnDeleteClick" Classes="danger" Width="80"
+                        IsEnabled="{Binding SelectedEmployee, Converter={StaticResource NullToBool}}" />
+                <Button Content="Reload" Click="OnDebugLoadClick" Width="80" />
+            </StackPanel>
+        </DockPanel>
+        
+        <!-- Employee List -->
+        <Border Classes="card">
+            <StackPanel>
+                <TextBlock Text="Employee List" Classes="subheader" />
+                <ScrollViewer MaxHeight="500" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Employees}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:Employee">
+                                <Grid Margin="0,8" Height="40">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="60" />
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="1.5*" />
+                                        <ColumnDefinition Width="1.5*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Grid.ColumnSpan="4" Background="#f0f0f0" CornerRadius="4" Margin="0,0,8,0">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="1.5*" />
+                                                <ColumnDefinition Width="1.5*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Id}" Width="40" Foreground="Black" 
+                                                       VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold" />
+                                            <TextBlock Grid.Column="1" Text="{Binding FullName}" Foreground="Black" 
+                                                       VerticalAlignment="Center" Margin="8,0" FontSize="14" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Department.Name}" Foreground="Black" 
+                                                       VerticalAlignment="Center" Margin="8,0" FontSize="14" />
+                                            <TextBlock Grid.Column="3" Text="{Binding Position}" Foreground="Black" 
+                                                       VerticalAlignment="Center" Margin="8,0" FontSize="14" />
+                                        </Grid>
+                                    </Border>
+                                    <Button Grid.Column="4" Content="Edit" Width="80" Height="32" Margin="4,0" Click="OnRowEditClick" 
+                                            Classes="primary" HorizontalContentAlignment="Center" />
+                                    <Button Grid.Column="5" Content="Delete" Width="80" Height="32" Margin="4,0" Click="OnRowDeleteClick" 
+                                            Classes="danger" HorizontalContentAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+        
+        <!-- Hidden DataGrid for backward compatibility -->
+        <DataGrid x:Name="EmployeesGrid" ItemsSource="{Binding Employees}" AutoGenerateColumns="False" Height="0" Opacity="0"
+                  SelectedItem="{Binding SelectedEmployee}" IsVisible="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="60" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Name" Binding="{Binding FullName}" Width="*"/>
+                <DataGridTextColumn Header="Department" Binding="{Binding Department.Name}" Width="150"/>
+                <DataGridTextColumn Header="Position" Binding="{Binding Position}" Width="150"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </StackPanel>
+</UserControl> 

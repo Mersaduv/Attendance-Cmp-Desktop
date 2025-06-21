@@ -1,0 +1,83 @@
+<UserControl x:Class="AttandenceDesktop.Views.AttendanceView"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AttandenceDesktop.ViewModels"
+             xmlns:model="using:AttandenceDesktop.Models"
+             xmlns:avalonia="https://github.com/avaloniaui"
+             mc:Ignorable="d"
+             x:DataType="vm:AttendanceViewModel">
+    <Design.DataContext>
+        <vm:AttendanceViewModel />
+    </Design.DataContext>
+
+    <StackPanel Margin="16" Spacing="12">
+        <!-- Header -->
+        <DockPanel>
+            <TextBlock Text="Attendance Tracking" Classes="header" />
+            <TextBlock Text="{Binding CurrentTime}" HorizontalAlignment="Right" DockPanel.Dock="Right"/>
+        </DockPanel>
+
+        <!-- Employee selection & actions -->
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="Select Employee:" VerticalAlignment="Center" Width="120" />
+                    <ComboBox Width="300" ItemsSource="{Binding Employees}" SelectedItem="{Binding SelectedEmployee}" 
+                              ItemTemplate="{StaticResource EmployeeTemplate}" />
+                </StackPanel>
+
+                <!-- Status -->
+                <TextBlock Text="{Binding SelectedEmployeeStatus, StringFormat='Status: {0}'}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Check In" Command="{Binding CheckInCommand}" Classes="primary" />
+                    <Button Content="Check Out" Command="{Binding CheckOutCommand}" Classes="secondary" />
+                    <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                </StackPanel>
+                <TextBlock Text="{Binding Message}" Foreground="Red" />
+            </StackPanel>
+        </Border>
+
+        <!-- Filter Buttons -->
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Content="All" Command="{Binding SetFilterCommand}" CommandParameter="All" />
+            <Button Content="Checked In" Command="{Binding SetFilterCommand}" CommandParameter="CheckedIn" Classes="success" />
+            <Button Content="Checked Out" Command="{Binding SetFilterCommand}" CommandParameter="CheckedOut" />
+        </StackPanel>
+
+        <!-- Attendance Table -->
+        <TextBlock Text="Attendance Records" Classes="subheader" />
+        <Border Classes="card">
+            <DataGrid ItemsSource="{Binding FilteredAttendance}" 
+                      AutoGenerateColumns="False" 
+                      IsReadOnly="True"
+                      Height="400">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Employee" Width="*">
+                        <DataGridTextColumn.Binding>
+                            <avalonia:Binding Path="Employee.FullName"/>
+                        </DataGridTextColumn.Binding>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Department" Width="*">
+                        <DataGridTextColumn.Binding>
+                            <avalonia:Binding Path="Employee.Department.Name"/>
+                        </DataGridTextColumn.Binding>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Check In" Binding="{Binding CheckInTime}" Width="120"/>
+                    <DataGridTextColumn Header="Check Out" Binding="{Binding CheckOutTime}" Width="120"/>
+                    <DataGridTextColumn Header="Duration" Binding="{Binding WorkDuration}" Width="120"/>
+                    <DataGridTextColumn Header="Status" Binding="{Binding IsComplete}" Width="80"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+    </StackPanel>
+
+    <!-- Employee display template -->
+    <UserControl.Resources>
+        <DataTemplate x:Key="EmployeeTemplate" DataType="model:Employee">
+            <TextBlock Text="{Binding FullName}" />
+        </DataTemplate>
+    </UserControl.Resources>
+</UserControl> 

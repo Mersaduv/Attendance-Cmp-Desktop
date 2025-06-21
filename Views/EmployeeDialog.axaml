@@ -1,0 +1,140 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:AttandenceDesktop.ViewModels"
+        xmlns:converters="using:AttandenceDesktop.Converters"
+        mc:Ignorable="d"
+        x:Class="AttandenceDesktop.Views.EmployeeDialog"
+        x:DataType="vm:EmployeeDialogViewModel"
+        Title="{Binding WindowTitle}"
+        Width="650" Height="650"
+        WindowStartupLocation="CenterOwner">
+
+    <Design.DataContext>
+        <vm:EmployeeDialogViewModel/>
+    </Design.DataContext>
+    
+    <Window.Resources>
+        <converters:DateTimeToDateTimeOffsetConverter x:Key="DateTimeToDateTimeOffset"/>
+    </Window.Resources>
+    
+    <Window.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,8,0,4"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style Selector="DatePicker">
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style Selector="TextBlock.error">
+            <Setter Property="Foreground" Value="Red"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="0,-6,0,10"/>
+        </Style>
+    </Window.Styles>
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <ScrollViewer Grid.Row="0">
+            <StackPanel>
+                <TextBlock Text="Employee Information" FontSize="18" FontWeight="Bold" Margin="0,0,0,15"/>
+                
+                <!-- First Row: First Name, Last Name -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="First Name" Classes="label"/>
+                        <TextBox Text="{Binding FirstName}" Watermark="Enter first name"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                        <TextBlock Text="Last Name" Classes="label"/>
+                        <TextBox Text="{Binding LastName}" Watermark="Enter last name"/>
+                    </StackPanel>
+                </Grid>
+                
+                <!-- Second Row: Email, Phone -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Email" Classes="label"/>
+                        <TextBox Text="{Binding Email}" Watermark="example@domain.com"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                        <TextBlock Text="Phone Number" Classes="label"/>
+                        <TextBox Text="{Binding PhoneNumber}" Watermark="09123456789"/>
+                    </StackPanel>
+                </Grid>
+                
+                <!-- Third Row: Position, Employee Code -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Position" Classes="label"/>
+                        <TextBox Text="{Binding Position}" Watermark="Enter position"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                        <TextBlock Text="Employee Code" Classes="label"/>
+                        <TextBox Text="{Binding EmployeeCode}" Watermark="Enter employee code"/>
+                    </StackPanel>
+                </Grid>
+                
+                <!-- Fourth Row: Department, Hire Date -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Department" Classes="label"/>
+                        <ComboBox ItemsSource="{Binding AvailableDepartments}" 
+                                  SelectedItem="{Binding SelectedDepartment}"
+                                  DisplayMemberBinding="{Binding Name}"
+                                  SelectedValueBinding="{Binding Id}"
+                                  SelectedValue="{Binding DepartmentId}"
+                                  HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                        <TextBlock Text="Hire Date" Classes="label"/>
+                        <DatePicker SelectedDate="{Binding HireDate, Converter={StaticResource DateTimeToDateTimeOffset}}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+        
+        <!-- Button Row -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="Cancel" Click="OnCancelClick" Width="100" Height="40" Margin="0,0,8,0"/>
+            <Button Content="Save" Click="OnSaveClick" Width="100" Height="40" Background="#2196F3" Foreground="White"/>
+        </StackPanel>
+    </Grid>
+</Window> 

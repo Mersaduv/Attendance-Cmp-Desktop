@@ -1,0 +1,76 @@
+<UserControl x:Name="Root"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AttandenceDesktop.ViewModels"
+             xmlns:converters="using:AttandenceDesktop.Converters"
+             mc:Ignorable="d"
+             x:Class="AttandenceDesktop.Views.DepartmentView"
+             x:DataType="vm:DepartmentViewModel"
+             d:DesignWidth="800" d:DesignHeight="600">
+    <UserControl.Resources>
+        <converters:NullToBoolConverter x:Key="NullToBool" />
+    </UserControl.Resources>
+
+    <Design.DataContext>
+        <vm:DepartmentViewModel />
+    </Design.DataContext>
+
+    <StackPanel Margin="16" Spacing="12">
+        <!-- Header and Action Buttons -->
+        <DockPanel>
+            <TextBlock Text="Departments" Classes="header" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Content="Add" Click="OnAddClick" Classes="success" Width="80" />
+                <Button Content="Edit" Click="OnEditClick" Classes="primary" Width="80"
+                        IsEnabled="{Binding SelectedDepartment, Converter={StaticResource NullToBool}}" />
+                <Button Content="Delete" Click="OnDeleteClick" Classes="danger" Width="80"
+                        IsEnabled="{Binding SelectedDepartment, Converter={StaticResource NullToBool}}" />
+                <Button Content="Reload" Click="OnDebugLoadClick" Width="80" />
+            </StackPanel>
+        </DockPanel>
+        
+        <!-- Department List -->
+        <Border Classes="card">
+            <StackPanel>
+                <TextBlock Text="Department List" Classes="subheader" />
+                <ScrollViewer MaxHeight="500" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Departments}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,8" Height="40">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="60" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Grid.ColumnSpan="2" Background="#f0f0f0" CornerRadius="4" Margin="0,0,8,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Id}" Width="40" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding Name}" Foreground="Black" VerticalAlignment="Center" Margin="8,0" FontSize="14" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Button Grid.Column="2" Content="Edit" Width="80" Height="32" Margin="4,0" Click="OnRowEditClick" 
+                                            Classes="primary" HorizontalContentAlignment="Center" />
+                                    <Button Grid.Column="3" Content="Delete" Width="80" Height="32" Margin="4,0" Click="OnRowDeleteClick" 
+                                            Classes="danger" HorizontalContentAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+        
+        <!-- Hidden DataGrid for backward compatibility -->
+        <DataGrid x:Name="DepartmentsGrid" ItemsSource="{Binding Departments}" AutoGenerateColumns="False" Height="0" Opacity="0"
+                  SelectedItem="{Binding SelectedDepartment}" IsVisible="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </StackPanel>
+</UserControl> 

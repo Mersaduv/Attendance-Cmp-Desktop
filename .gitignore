@@ -1,0 +1,47 @@
+## Ignore Visual Studio & .NET build files
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Avalonia build artifacts
+App.axaml.cs.*
+App.g.cs
+*.g.cs
+*.g.i.cs
+
+## VS Code files
+.vscode/
+
+## Rider files
+.idea/
+
+## Avalonia resources (generated)
+*.axaml.cs
+*.baml
+
+## dotnet publish artifacts
+publish/
+*.dll
+*.exe
+*.pdb
+
+## Logs
+*.log
+
+## Temporary files
+*.tmp
+*.bak
+
+## NuGet
+*.nupkg
+.nuget/
+packages/
+project.lock.json
+project.assets.json
+
+## Others
+*.DS_Store
+Thumbs.db

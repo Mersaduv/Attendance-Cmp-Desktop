@@ -1,0 +1,157 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AttandenceDesktop.ViewModels"
+             xmlns:converters="using:AttandenceDesktop.Converters"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="AttandenceDesktop.Views.ReportView"
+             x:DataType="vm:ReportViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Report Controls -->
+        <Border Grid.Row="0" Background="White" Padding="10" Margin="0,0,0,10" CornerRadius="5" BoxShadow="0 2 4 #20000000">
+            <Grid ColumnDefinitions="*,*,*,*,Auto">
+                <!-- Report Type Selection -->
+                <StackPanel Grid.Column="0" Margin="5">
+                    <TextBlock Text="Report Type" Margin="0,0,0,5" />
+                    <ComboBox SelectedIndex="{Binding ReportTypeIndex}" 
+                              Width="150" 
+                              HorizontalAlignment="Stretch">
+                        <ComboBoxItem>Employee</ComboBoxItem>
+                        <ComboBoxItem>Department</ComboBoxItem>
+                        <ComboBoxItem>Company</ComboBoxItem>
+                    </ComboBox>
+                </StackPanel>
+                
+                <!-- Employee Selection - Visible only when Report Type is Employee -->
+                <StackPanel Grid.Column="1" Margin="5" IsVisible="{Binding IsEmployeeSelectionVisible}">
+                    <TextBlock Text="Employee" Margin="0,0,0,5" />
+                    <ComboBox ItemsSource="{Binding Employees}" 
+                              SelectedValue="{Binding SelectedEmployeeId}"
+                              DisplayMemberBinding="{Binding FullName}"
+                              SelectedValueBinding="{Binding Id}"
+                              Width="150" 
+                              HorizontalAlignment="Stretch" />
+                </StackPanel>
+                
+                <!-- Department Selection - Visible only when Report Type is Department -->
+                <StackPanel Grid.Column="1" Margin="5" IsVisible="{Binding IsDepartmentSelectionVisible}">
+                    <TextBlock Text="Department" Margin="0,0,0,5" />
+                    <ComboBox ItemsSource="{Binding Departments}" 
+                              SelectedValue="{Binding SelectedDepartmentId}"
+                              DisplayMemberBinding="{Binding Name}"
+                              SelectedValueBinding="{Binding Id}"
+                              Width="150" 
+                              HorizontalAlignment="Stretch" />
+                </StackPanel>
+                
+                <!-- Date Range -->
+                <StackPanel Grid.Column="2" Margin="5">
+                    <TextBlock Text="Start Date" Margin="0,0,0,5" />
+                    <CalendarDatePicker SelectedDate="{Binding StartDate}" Width="150" HorizontalAlignment="Stretch" />
+                </StackPanel>
+                
+                <StackPanel Grid.Column="3" Margin="5">
+                    <TextBlock Text="End Date" Margin="0,0,0,5" />
+                    <CalendarDatePicker SelectedDate="{Binding EndDate}" Width="150" HorizontalAlignment="Stretch" />
+                </StackPanel>
+                
+                <!-- Generate Button -->
+                <StackPanel Grid.Column="4" Margin="5" VerticalAlignment="Bottom">
+                    <Button Command="{Binding GenerateReportCommand}" 
+                            Content="Generate Report" 
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Background="#1976D2"
+                            Foreground="White"
+                            Padding="10,5" />
+                </StackPanel>
+            </Grid>
+        </Border>
+        
+        <!-- Report Content -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,*,Auto">
+            <!-- Statistics Panel -->
+            <Border Grid.Row="0" Background="White" Padding="10" Margin="0,0,0,10" CornerRadius="5" BoxShadow="0 2 4 #20000000">
+                <StackPanel>
+                    <TextBlock Text="Report Statistics" FontWeight="Bold" FontSize="16" Margin="0,0,0,10" />
+                    <Grid ColumnDefinitions="*,*,*,*,*">
+                        <Border Grid.Column="0" Background="#E3F2FD" Padding="10" Margin="5" CornerRadius="5">
+                            <StackPanel>
+                                <TextBlock Text="Present Days" FontSize="12" />
+                                <TextBlock Text="{Binding Statistics.PresentDays}" FontSize="20" FontWeight="Bold" />
+                            </StackPanel>
+                        </Border>
+                        
+                        <Border Grid.Column="1" Background="#E8F5E9" Padding="10" Margin="5" CornerRadius="5">
+                            <StackPanel>
+                                <TextBlock Text="Absent Days" FontSize="12" />
+                                <TextBlock Text="{Binding Statistics.AbsentDays}" FontSize="20" FontWeight="Bold" />
+                            </StackPanel>
+                        </Border>
+                        
+                        <Border Grid.Column="2" Background="#FFF3E0" Padding="10" Margin="5" CornerRadius="5">
+                            <StackPanel>
+                                <TextBlock Text="Late Arrivals" FontSize="12" />
+                                <TextBlock Text="{Binding Statistics.LateArrivals}" FontSize="20" FontWeight="Bold" />
+                            </StackPanel>
+                        </Border>
+                        
+                        <Border Grid.Column="3" Background="#E0F7FA" Padding="10" Margin="5" CornerRadius="5">
+                            <StackPanel>
+                                <TextBlock Text="Early Departures" FontSize="12" />
+                                <TextBlock Text="{Binding Statistics.EarlyDepartures}" FontSize="20" FontWeight="Bold" />
+                            </StackPanel>
+                        </Border>
+                        
+                        <Border Grid.Column="4" Background="#F3E5F5" Padding="10" Margin="5" CornerRadius="5">
+                            <StackPanel>
+                                <TextBlock Text="Attendance Rate" FontSize="12" />
+                                <TextBlock Text="{Binding Statistics.AttendanceRate, StringFormat={}{0:F1}%}" FontSize="20" FontWeight="Bold" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+            
+            <!-- Report Data Grid -->
+            <DataGrid Grid.Row="1" 
+                      ItemsSource="{Binding ReportItems}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      Background="White"
+                      BorderThickness="1"
+                      BorderBrush="#DDDDDD"
+                      GridLinesVisibility="All">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}" Width="100" />
+                    <DataGridTextColumn Header="Employee" Binding="{Binding EmployeeName}" Width="150" />
+                    <DataGridTextColumn Header="Department" Binding="{Binding DepartmentName}" Width="120" />
+                    <DataGridTextColumn Header="Check In" Binding="{Binding CheckInTime, StringFormat={}{0:HH:mm:ss}}" Width="100" />
+                    <DataGridTextColumn Header="Check Out" Binding="{Binding CheckOutTime, StringFormat={}{0:HH:mm:ss}}" Width="100" />
+                    <DataGridTextColumn Header="Duration" Binding="{Binding WorkDuration, StringFormat={}{0:hh\\:mm\\:ss}}" Width="100" />
+                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
+                    <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="*" />
+                </DataGrid.Columns>
+            </DataGrid>
+            
+            <!-- Export Button -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                <Button Command="{Binding ExportReportCommand}" 
+                        Content="Export Report" 
+                        Background="#4CAF50"
+                        Foreground="White"
+                        Padding="15,8" />
+            </StackPanel>
+        </Grid>
+        
+        <!-- Loading Overlay -->
+        <Grid Grid.RowSpan="2" Background="#80000000" IsVisible="{Binding IsLoading}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Width="100" Height="4" />
+                <TextBlock Text="Loading..." Foreground="White" Margin="0,10,0,0" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl> 

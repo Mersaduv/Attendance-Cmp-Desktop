@@ -1,0 +1,44 @@
+<UserControl x:Class="AttandenceDesktop.Views.WorkScheduleView"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AttandenceDesktop.ViewModels"
+             mc:Ignorable="d"
+             x:DataType="vm:WorkScheduleViewModel">
+    <Design.DataContext>
+        <vm:WorkScheduleViewModel />
+    </Design.DataContext>
+
+    <StackPanel Margin="16" Spacing="12">
+        <DockPanel>
+            <TextBlock Text="Work Schedules" Classes="header" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
+                <Button Content="Add New" Command="{Binding AddCommand}" Classes="success" />
+                <Button Content="Refresh" Command="{Binding LoadCommand}" Classes="primary" />
+            </StackPanel>
+        </DockPanel>
+
+        <Border Classes="card">
+            <DataGrid ItemsSource="{Binding WorkSchedules}" AutoGenerateColumns="False" Height="500">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="80"/>
+                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="Start" Binding="{Binding StartTime}" Width="120"/>
+                    <DataGridTextColumn Header="End" Binding="{Binding EndTime}" Width="120"/>
+                    <DataGridTextColumn Header="Department" Binding="{Binding Department.Name}" Width="150"/>
+                    <DataGridTemplateColumn Header="Actions" Width="160">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Button Content="Edit" Width="60" Classes="primary" Click="OnRowEditClick" />
+                                    <Button Content="Del" Width="60" Classes="danger" Click="OnRowDeleteClick" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+    </StackPanel>
+</UserControl> 

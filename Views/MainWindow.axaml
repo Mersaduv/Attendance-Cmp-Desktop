@@ -1,0 +1,65 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AttandenceDesktop.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="using:AttandenceDesktop.Views"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
+        x:Class="AttandenceDesktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Time Attendance Management System">
+
+    <Design.DataContext>
+        <!-- This only sets the DataContext for the previewer in an IDE,
+             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+        <!-- Navigation Panel -->
+        <Border DockPanel.Dock="Left" Width="220" Background="#1976D2">
+            <StackPanel Margin="10">
+                <TextBlock Text="Time Attendance" 
+                           FontSize="20" 
+                           FontWeight="Bold" 
+                           HorizontalAlignment="Center"
+                           Foreground="White"
+                           Margin="0,20,0,30" />
+                
+                <Button Content="Dashboard" 
+                        Command="{Binding ShowDashboardCommand}" 
+                        Classes="nav" />
+                
+                <Button Content="Departments" 
+                        Command="{Binding ShowDepartmentsCommand}" 
+                        Classes="nav" />
+                
+                <Button Content="Employees" 
+                        Command="{Binding ShowEmployeesCommand}" 
+                        Classes="nav" />
+                
+                <Button Content="Attendance" 
+                        Command="{Binding ShowAttendanceCommand}" 
+                        Classes="nav" />
+
+                <Button Content="Schedules" 
+                        Command="{Binding ShowWorkSchedulesCommand}"
+                        Classes="nav" />
+
+                <Button Content="Calendar" 
+                        Command="{Binding ShowWorkCalendarsCommand}" 
+                        Classes="nav" />
+                        
+                <Button Content="Reports" 
+                        Command="{Binding ShowReportsCommand}" 
+                        Classes="nav" />
+            </StackPanel>
+        </Border>
+        
+        <!-- Content Area -->
+        <Border Background="#F5F5F5" Padding="10">
+            <ContentControl Content="{Binding CurrentView}" />
+        </Border>
+    </DockPanel>
+</Window>

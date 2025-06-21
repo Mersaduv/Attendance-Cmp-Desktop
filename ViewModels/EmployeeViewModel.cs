@@ -1,0 +1,173 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Input;
+using AttandenceDesktop.Models;
+using AttandenceDesktop.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+
+namespace AttandenceDesktop.ViewModels
+{
+    public class EmployeeViewModel : ViewModelBase
+    {
+        private readonly EmployeeService _employeeService;
+        private readonly DepartmentService _departmentService;
+        
+        private ObservableCollection<Employee> _employees;
+        private List<Department> _departments;
+        private Employee _selectedEmployee;
+        private bool _isLoading = false;
+        private string _errorMessage;
+        
+        public ObservableCollection<Employee> Employees
+        {
+            get => _employees;
+            set => SetProperty(ref _employees, value);
+        }
+        
+        public List<Department> Departments
+        {
+            get => _departments;
+            set => SetProperty(ref _departments, value);
+        }
+        
+        public Employee SelectedEmployee
+        {
+            get => _selectedEmployee;
+            set => SetProperty(ref _selectedEmployee, value);
+        }
+        
+        public bool IsLoading
+        {
+            get => _isLoading;
+            set => SetProperty(ref _isLoading, value);
+        }
+        
+        public string ErrorMessage
+        {
+            get => _errorMessage;
+            set => SetProperty(ref _errorMessage, value);
+        }
+        
+        public ICommand LoadEmployeesCommand { get; }
+        
+        public EmployeeViewModel(EmployeeService employeeService, DepartmentService departmentService)
+        {
+            _employeeService = employeeService;
+            _departmentService = departmentService;
+            
+            Employees = new ObservableCollection<Employee>();
+            LoadEmployeesCommand = new AsyncRelayCommand(LoadEmployeesAsync);
+            
+            // Load data automatically when view model is created
+            _ = InitializeAsync();
+        }
+        
+        private async Task InitializeAsync()
+        {
+            IsLoading = true;
+            try
+            {
+                await LoadDepartmentsAsync();
+                await LoadEmployeesAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error loading data: {ex.Message}");
+                ErrorMessage = $"Failed to load data: {ex.Message}";
+            }
+            finally
+            {
+                IsLoading = false;
+            }
+        }
+        
+        public async Task LoadEmployeesAsync()
+        {
+            try
+            {
+                IsLoading = true;
+                ErrorMessage = null;
+                
+                var employeesList = await _employeeService.GetAllAsync();
+                Employees = new ObservableCollection<Employee>(employeesList ?? new List<Employee>());
+                
+                Debug.WriteLine($"Loaded {Employees.Count} employees");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error loading employees: {ex.Message}");
+                ErrorMessage = $"Failed to load employees: {ex.Message}";
+            }
+            finally
+            {
+                IsLoading = false;
+            }
+        }
+        
+        private async Task LoadDepartmentsAsync()
+        {
+            try
+            {
+                var departmentsList = await _departmentService.GetAllAsync();
+                Departments = departmentsList ?? new List<Department>();
+                
+                Debug.WriteLine($"Loaded {Departments.Count} departments");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error loading departments: {ex.Message}");
+                ErrorMessage = $"Failed to load departments: {ex.Message}";
+            }
+        }
+        
+        public async Task CreateEmployeeAsync(Employee employee)
+        {
+            try
+            {
+                await _employeeService.CreateAsync(employee);
+                await LoadEmployeesAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error creating employee: {ex.Message}");
+                ErrorMessage = $"Failed to create employee: {ex.Message}";
+                throw;
+            }
+        }
+        
+        public async Task UpdateEmployeeAsync(Employee employee)
+        {
+            try
+            {
+                await _employeeService.UpdateAsync(employee);
+                await LoadEmployeesAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error updating employee: {ex.Message}");
+                ErrorMessage = $"Failed to update employee: {ex.Message}";
+                throw;
+            }
+        }
+        
+        public async Task DeleteEmployeeAsync(int id)
+        {
+            try
+            {
+                await _employeeService.DeleteAsync(id);
+                await LoadEmployeesAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error deleting employee: {ex.Message}");
+                ErrorMessage = $"Failed to delete employee: {ex.Message}";
+                throw;
+            }
+        }
+    }
+} 
