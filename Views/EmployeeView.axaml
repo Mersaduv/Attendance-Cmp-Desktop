@@ -23,10 +23,10 @@
             <TextBlock Text="Employees" Classes="header" />
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button Content="Add" Click="OnAddClick" Classes="success" Width="80" />
-                <Button Content="Edit" Click="OnEditClick" Classes="primary" Width="80"
+                <!-- <Button Content="Edit" Click="OnEditClick" Classes="primary" Width="80"
                         IsEnabled="{Binding SelectedEmployee, Converter={StaticResource NullToBool}}" />
                 <Button Content="Delete" Click="OnDeleteClick" Classes="danger" Width="80"
-                        IsEnabled="{Binding SelectedEmployee, Converter={StaticResource NullToBool}}" />
+                        IsEnabled="{Binding SelectedEmployee, Converter={StaticResource NullToBool}}" /> -->
                 <Button Content="Reload" Click="OnDebugLoadClick" Width="80" />
             </StackPanel>
         </DockPanel>

@@ -54,6 +54,10 @@
                 <Button Content="Reports" 
                         Command="{Binding ShowReportsCommand}" 
                         Classes="nav" />
+                        
+                <Button Content="Overview Reports" 
+                        Command="{Binding ShowOverviewReportsCommand}" 
+                        Classes="nav" />
             </StackPanel>
         </Border>
         

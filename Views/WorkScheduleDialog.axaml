@@ -6,7 +6,7 @@
         mc:Ignorable="d"
         x:Class="AttandenceDesktop.Views.WorkScheduleDialog"
         x:DataType="vm:WorkScheduleDialogViewModel"
-        Title="{Binding WindowTitle}" Width="400" Height="400" WindowStartupLocation="CenterOwner">
+        Title="{Binding WindowTitle}" Width="400" Height="650" WindowStartupLocation="CenterOwner">
 
     <Design.DataContext>
         <vm:WorkScheduleDialogViewModel />
@@ -18,21 +18,40 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Spacing="10">
-            <TextBlock Text="Name" />
-            <TextBox Text="{Binding Name}" />
+        <ScrollViewer Grid.Row="0">
+            <StackPanel Spacing="10">
+                <TextBlock Text="Name" />
+                <TextBox Text="{Binding Name}" />
 
-            <TextBlock Text="Start Time (HH:mm)" />
-            <TextBox Text="{Binding StartTime}" />
+                <TextBlock Text="Start Time (HH:mm)" Margin="0,10,0,0" />
+                <TextBox Text="{Binding StartTime}" />
 
-            <TextBlock Text="End Time (HH:mm)" />
-            <TextBox Text="{Binding EndTime}" />
+                <TextBlock Text="End Time (HH:mm)" Margin="0,10,0,0" />
+                <TextBox Text="{Binding EndTime}" />
+                
+                <TextBlock Text="Grace Period (minutes)" Margin="0,10,0,0" />
+                <NumericUpDown Value="{Binding FlexTimeAllowanceMinutes}" Minimum="0" Maximum="60" Increment="1" />
 
-            <TextBlock Text="Department" />
-            <ComboBox ItemsSource="{Binding Departments}"
-                      DisplayMemberBinding="{Binding Name}"
-                      SelectedItem="{Binding SelectedDepartment}"/>
-        </StackPanel>
+                <TextBlock Text="Department" Margin="0,10,0,0" />
+                <ComboBox ItemsSource="{Binding Departments}"
+                          DisplayMemberBinding="{Binding Name}"
+                          SelectedItem="{Binding SelectedDepartment}"/>
+                
+                <!-- Working Days Section -->
+                <TextBlock Text="Working Days" FontWeight="Bold" Margin="0,20,0,5" />
+                <Border BorderBrush="#DDDDDD" BorderThickness="1" Padding="10" CornerRadius="3">
+                    <StackPanel Spacing="8">
+                        <CheckBox Content="Sunday" IsChecked="{Binding IsWorkingDaySunday}" />
+                        <CheckBox Content="Monday" IsChecked="{Binding IsWorkingDayMonday}" />
+                        <CheckBox Content="Tuesday" IsChecked="{Binding IsWorkingDayTuesday}" />
+                        <CheckBox Content="Wednesday" IsChecked="{Binding IsWorkingDayWednesday}" />
+                        <CheckBox Content="Thursday" IsChecked="{Binding IsWorkingDayThursday}" />
+                        <CheckBox Content="Friday" IsChecked="{Binding IsWorkingDayFriday}" />
+                        <CheckBox Content="Saturday" IsChecked="{Binding IsWorkingDaySaturday}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,20,0,0">
             <Button Content="Cancel" Click="OnCancelClick" Width="100" />

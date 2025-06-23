@@ -6,32 +6,51 @@ using AttandenceDesktop.Models;
 using AttandenceDesktop.Services;
 using Microsoft.EntityFrameworkCore;
 using AttandenceDesktop.Data;
+using System;
 
 namespace AttandenceDesktop.ViewModels;
 
-public partial class DepartmentViewModel : ViewModelBase
+public partial class DepartmentViewModel : ViewModelBase, IDisposable
 {
     private readonly DepartmentService _departmentService;
+    private readonly DataRefreshService _dataRefreshService;
 
     internal DepartmentService DepartmentService => _departmentService;
 
-    public DepartmentViewModel(DepartmentService departmentService)
+    public DepartmentViewModel(DepartmentService departmentService, DataRefreshService dataRefreshService)
     {
         _departmentService = departmentService;
+        _dataRefreshService = dataRefreshService;
         Departments = new ObservableCollection<Department>();
         LoadDepartmentsCommand = new AsyncRelayCommand(LoadDepartmentsAsync);
         AddCommand = new AsyncRelayCommand(AddAsync);
         EditCommand = new AsyncRelayCommand<Department>(EditAsync);
         DeleteCommand = new AsyncRelayCommand<Department>(DeleteAsync);
 
+        // Subscribe to data change events
+        _dataRefreshService.DepartmentsChanged += OnDepartmentsChanged;
+
         // Initial load
         _ = LoadDepartmentsAsync();
     }
 
+    public void Dispose()
+    {
+        // Unsubscribe from events
+        _dataRefreshService.DepartmentsChanged -= OnDepartmentsChanged;
+    }
+
+    private void OnDepartmentsChanged(object? sender, EventArgs e)
+    {
+        _ = LoadDepartmentsAsync();
+    }
+
     // Parameterless constructor for design-time support
-    public DepartmentViewModel() : this(new DepartmentService(() => new ApplicationDbContext(
-        new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase("DesignTimeDB").Options)))
+    public DepartmentViewModel() : this(
+        new DepartmentService(() => new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase("DesignTimeDB").Options)),
+        null!)
     {
     }
 

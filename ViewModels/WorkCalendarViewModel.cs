@@ -4,21 +4,69 @@ using AttandenceDesktop.Models;
 using AttandenceDesktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System;
 
 namespace AttandenceDesktop.ViewModels
 {
-    public partial class WorkCalendarViewModel : ViewModelBase
+    public partial class WorkCalendarViewModel : ViewModelBase, IDisposable
     {
         private readonly WorkCalendarService _workCalendarService;
+        private readonly DataRefreshService _dataRefreshService;
 
-        public WorkCalendarViewModel(WorkCalendarService workCalendarService)
+        public WorkCalendarViewModel(WorkCalendarService workCalendarService, DataRefreshService dataRefreshService)
         {
             _workCalendarService = workCalendarService;
+            _dataRefreshService = dataRefreshService;
+            
             WorkCalendars = new ObservableCollection<WorkCalendar>();
             LoadCommand = new AsyncRelayCommand(LoadAsync);
             AddCommand = new AsyncRelayCommand(AddAsync);
             EditCommand = new AsyncRelayCommand<WorkCalendar>(EditAsync);
             DeleteCommand = new AsyncRelayCommand<WorkCalendar>(DeleteAsync);
+            
+            // Subscribe to data change events
+            _dataRefreshService.WorkCalendarsChanged += OnWorkCalendarsChanged;
+            
+            _ = LoadAsync();
+        }
+        
+        // Parameterless constructor for design-time support
+        public WorkCalendarViewModel()
+        {
+            _workCalendarService = null!;
+            _dataRefreshService = null!;
+            
+            WorkCalendars = new ObservableCollection<WorkCalendar>();
+            LoadCommand = new AsyncRelayCommand(async () => {});
+            AddCommand = new AsyncRelayCommand(async () => {});
+            EditCommand = new AsyncRelayCommand<WorkCalendar>(async _ => {});
+            DeleteCommand = new AsyncRelayCommand<WorkCalendar>(async _ => {});
+            
+            // Add design-time data
+            WorkCalendars.Add(new WorkCalendar { 
+                Id = 1, 
+                Name = "National Holiday", 
+                Date = DateTime.Today,
+                EntryType = CalendarEntryType.Holiday,
+                Description = "New Year's Day"
+            });
+            WorkCalendars.Add(new WorkCalendar { 
+                Id = 2, 
+                Name = "Company Event", 
+                Date = DateTime.Today.AddDays(5),
+                EntryType = CalendarEntryType.NonWorkingDay,
+                Description = "Company Picnic"
+            });
+        }
+
+        public void Dispose()
+        {
+            // Unsubscribe from events
+            _dataRefreshService.WorkCalendarsChanged -= OnWorkCalendarsChanged;
+        }
+
+        private void OnWorkCalendarsChanged(object? sender, EventArgs e)
+        {
             _ = LoadAsync();
         }
 

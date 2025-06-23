@@ -12,10 +12,11 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace AttandenceDesktop.ViewModels
 {
-    public class EmployeeViewModel : ViewModelBase
+    public class EmployeeViewModel : ViewModelBase, IDisposable
     {
         private readonly EmployeeService _employeeService;
         private readonly DepartmentService _departmentService;
+        private readonly DataRefreshService _dataRefreshService;
         
         private ObservableCollection<Employee> _employees;
         private List<Department> _departments;
@@ -55,16 +56,69 @@ namespace AttandenceDesktop.ViewModels
         
         public ICommand LoadEmployeesCommand { get; }
         
-        public EmployeeViewModel(EmployeeService employeeService, DepartmentService departmentService)
+        public EmployeeViewModel(EmployeeService employeeService, DepartmentService departmentService, DataRefreshService dataRefreshService)
         {
             _employeeService = employeeService;
             _departmentService = departmentService;
+            _dataRefreshService = dataRefreshService;
             
             Employees = new ObservableCollection<Employee>();
             LoadEmployeesCommand = new AsyncRelayCommand(LoadEmployeesAsync);
             
+            // Subscribe to data change events
+            _dataRefreshService.EmployeesChanged += OnEmployeesChanged;
+            _dataRefreshService.DepartmentsChanged += OnDepartmentsChanged;
+            
             // Load data automatically when view model is created
             _ = InitializeAsync();
+        }
+        
+        // Parameterless constructor for design-time support
+        public EmployeeViewModel()
+        {
+            _employeeService = null!;
+            _departmentService = null!;
+            _dataRefreshService = null!;
+            
+            _employees = new ObservableCollection<Employee>();
+            _departments = new List<Department>();
+            _selectedEmployee = null!;
+            _errorMessage = string.Empty;
+            
+            LoadEmployeesCommand = new AsyncRelayCommand(async () => { });
+            
+            // Add some design-time data
+            Employees.Add(new Employee { 
+                Id = 1, 
+                FirstName = "John", 
+                LastName = "Doe", 
+                Email = "john@example.com",
+                Position = "Developer"
+            });
+            Employees.Add(new Employee { 
+                Id = 2, 
+                FirstName = "Jane", 
+                LastName = "Smith", 
+                Email = "jane@example.com",
+                Position = "Manager"
+            });
+        }
+        
+        public void Dispose()
+        {
+            // Unsubscribe from events
+            _dataRefreshService.EmployeesChanged -= OnEmployeesChanged;
+            _dataRefreshService.DepartmentsChanged -= OnDepartmentsChanged;
+        }
+        
+        private void OnEmployeesChanged(object? sender, EventArgs e)
+        {
+            _ = LoadEmployeesAsync();
+        }
+        
+        private void OnDepartmentsChanged(object? sender, EventArgs e)
+        {
+            _ = LoadDepartmentsAsync();
         }
         
         private async Task InitializeAsync()

@@ -1,6 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using AttandenceDesktop.Data;
 using AttandenceDesktop.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace AttandenceDesktop.Services
 {
@@ -8,11 +13,16 @@ namespace AttandenceDesktop.Services
     {
         private readonly Func<ApplicationDbContext> _contextFactory;
         private readonly WorkScheduleService _workScheduleService;
+        private readonly DataRefreshService _dataRefreshService;
         
-        public EmployeeService(Func<ApplicationDbContext> contextFactory, WorkScheduleService workScheduleService)
+        public EmployeeService(
+            Func<ApplicationDbContext> contextFactory,
+            WorkScheduleService workScheduleService,
+            DataRefreshService dataRefreshService)
         {
             _contextFactory = contextFactory;
             _workScheduleService = workScheduleService;
+            _dataRefreshService = dataRefreshService;
         }
         
         private ApplicationDbContext NewCtx() => _contextFactory();
@@ -47,97 +57,92 @@ namespace AttandenceDesktop.Services
         
         public async Task<Employee> CreateAsync(Employee employee)
         {
-            // Check if employee code is unique
-            if (!await IsEmployeeCodeUnique(employee.EmployeeCode))
+            Trace.WriteLine($"[Employee Creation] Starting - Employee: {employee.FirstName} {employee.LastName}, Code: {employee.EmployeeCode}, Department: {employee.DepartmentId}");
+            try
             {
-                throw new InvalidOperationException($"Employee code '{employee.EmployeeCode}' already exists. Please use a unique code.");
-            }
-            
-            // Get the department's work schedule if it exists
-            var departmentSchedules = await _workScheduleService.GetByDepartmentAsync(employee.DepartmentId);
-            var departmentSchedule = departmentSchedules.FirstOrDefault();
-            
-            // Assign the department's work schedule to the employee if available, otherwise use the default schedule
-            if (departmentSchedule != null)
-            {
-                employee.WorkScheduleId = departmentSchedule.Id;
-            }
-            else
-            {
-                // Get default schedule (ID = 1) if department has no specific schedule
                 using var ctx = NewCtx();
-                var defaultSchedule = await ctx.WorkSchedules.FindAsync(1);
-                if (defaultSchedule != null)
-                {
-                    employee.WorkScheduleId = defaultSchedule.Id;
-                }
+                ctx.Employees.Add(employee);
+                await ctx.SaveChangesAsync();
+                
+                // Notify that employees have changed
+                _dataRefreshService.NotifyEmployeesChanged();
+                
+                Trace.WriteLine($"[Employee Creation] Success - Created employee with ID: {employee.Id}, Name: {employee.FirstName} {employee.LastName}");
+                return employee;
             }
-            
-            using (var ctx2 = NewCtx())
+            catch (Exception ex)
             {
-                ctx2.Employees.Add(employee);
-                await ctx2.SaveChangesAsync();
+                Trace.WriteLine($"[Employee Creation] ERROR - Failed to create employee: {ex.Message}");
+                throw;
             }
-            return employee;
         }
         
         public async Task<Employee> UpdateAsync(Employee employee)
         {
-            // Check if employee code is unique
-            if (!await IsEmployeeCodeUnique(employee.EmployeeCode, employee.Id))
+            Trace.WriteLine($"[Employee Update] Starting - Employee ID: {employee.Id}, Name: {employee.FirstName} {employee.LastName}");
+            try
             {
-                throw new InvalidOperationException($"Employee code '{employee.EmployeeCode}' already exists. Please use a unique code.");
-            }
-            
-            using var ctx = NewCtx();
-            var existingEmployee = await ctx.Employees.FindAsync(employee.Id);
-            if (existingEmployee == null)
-            {
-                throw new KeyNotFoundException($"Employee with ID {employee.Id} not found");
-            }
-            
-            // Update properties
-            existingEmployee.FirstName = employee.FirstName;
-            existingEmployee.LastName = employee.LastName;
-            existingEmployee.Email = employee.Email;
-            existingEmployee.PhoneNumber = employee.PhoneNumber;
-            existingEmployee.Position = employee.Position;
-            existingEmployee.EmployeeCode = employee.EmployeeCode;
-            existingEmployee.DepartmentId = employee.DepartmentId;
-            existingEmployee.HireDate = employee.HireDate;
-            
-            // Get the department's work schedule if it exists
-            var departmentSchedules = await _workScheduleService.GetByDepartmentAsync(employee.DepartmentId);
-            var departmentSchedule = departmentSchedules.FirstOrDefault();
-            
-            // Assign the department's work schedule to the employee if available, otherwise use the default schedule
-            if (departmentSchedule != null)
-            {
-                existingEmployee.WorkScheduleId = departmentSchedule.Id;
-            }
-            else
-            {
-                // Get default schedule (ID = 1) if department has no specific schedule
-                var defaultSchedule = await ctx.WorkSchedules.FindAsync(1);
-                if (defaultSchedule != null)
+                using var ctx = NewCtx();
+                var existingEmployee = await ctx.Employees.FindAsync(employee.Id);
+                if (existingEmployee == null)
                 {
-                    existingEmployee.WorkScheduleId = defaultSchedule.Id;
+                    var errorMsg = $"Employee with ID {employee.Id} not found";
+                    Trace.WriteLine($"[Employee Update] ERROR - {errorMsg}");
+                    throw new KeyNotFoundException(errorMsg);
                 }
+                
+                // Update properties
+                existingEmployee.FirstName = employee.FirstName;
+                existingEmployee.LastName = employee.LastName;
+                existingEmployee.Email = employee.Email;
+                existingEmployee.PhoneNumber = employee.PhoneNumber;
+                existingEmployee.DepartmentId = employee.DepartmentId;
+                existingEmployee.WorkScheduleId = employee.WorkScheduleId;
+                existingEmployee.EmployeeCode = employee.EmployeeCode;
+                existingEmployee.Position = employee.Position;
+                existingEmployee.HireDate = employee.HireDate;
+                
+                // Save changes
+                await ctx.SaveChangesAsync();
+                
+                // Notify that employees have changed
+                _dataRefreshService.NotifyEmployeesChanged();
+                
+                Trace.WriteLine($"[Employee Update] Success - Updated employee ID: {employee.Id}");
+                return existingEmployee;
             }
-            
-            // Save changes
-            await ctx.SaveChangesAsync();
-            return existingEmployee;
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[Employee Update] ERROR - Failed to update employee: {ex.Message}");
+                throw;
+            }
         }
         
         public async Task DeleteAsync(int id)
         {
-            using var ctx = NewCtx();
-            var employee = await ctx.Employees.FindAsync(id);
-            if (employee != null)
+            Trace.WriteLine($"[Employee Delete] Starting - Employee ID: {id}");
+            try
             {
-                ctx.Employees.Remove(employee);
-                await ctx.SaveChangesAsync();
+                using var ctx = NewCtx();
+                var employee = await ctx.Employees.FindAsync(id);
+                if (employee != null)
+                {
+                    ctx.Employees.Remove(employee);
+                    await ctx.SaveChangesAsync();
+                    
+                    // Notify that employees have changed
+                    _dataRefreshService.NotifyEmployeesChanged();
+                    Trace.WriteLine($"[Employee Delete] Success - Deleted employee ID: {id}");
+                }
+                else
+                {
+                    Trace.WriteLine($"[Employee Delete] Warning - Employee ID: {id} not found");
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[Employee Delete] ERROR - Failed to delete employee: {ex.Message}");
+                throw;
             }
         }
         

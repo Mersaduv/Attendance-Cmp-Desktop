@@ -9,28 +9,75 @@ using Avalonia.Threading;
 
 namespace AttandenceDesktop.ViewModels;
 
-public partial class DashboardViewModel : ViewModelBase
+public partial class DashboardViewModel : ViewModelBase, IDisposable
 {
     private readonly EmployeeService _employeeService;
     private readonly DepartmentService _departmentService;
     private readonly AttendanceService _attendanceService;
+    private readonly DataRefreshService _dataRefreshService;
 
     public DashboardViewModel(EmployeeService employeeService,
                                DepartmentService departmentService,
-                               AttendanceService attendanceService)
+                               AttendanceService attendanceService,
+                               DataRefreshService dataRefreshService)
     {
         _employeeService = employeeService;
         _departmentService = departmentService;
         _attendanceService = attendanceService;
+        _dataRefreshService = dataRefreshService;
 
         RecentAttendance = new ObservableCollection<RecentAttendanceItem>();
         RefreshCommand = new AsyncRelayCommand(LoadDashboardDataAsync);
+
+        // Subscribe to data change events
+        _dataRefreshService.AttendanceChanged += OnAttendanceChanged;
+        _dataRefreshService.EmployeesChanged += OnEmployeesChanged;
+        _dataRefreshService.DepartmentsChanged += OnDepartmentsChanged;
 
         // Live clock
         var timer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Normal,
             (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss"));
         timer.Start();
 
+        _ = LoadDashboardDataAsync();
+    }
+
+    // Parameterless constructor for design-time support
+    public DashboardViewModel() 
+    {
+        _employeeService = null!;
+        _departmentService = null!;
+        _attendanceService = null!;
+        _dataRefreshService = null!;
+        
+        RecentAttendance = new ObservableCollection<RecentAttendanceItem>();
+        RefreshCommand = new AsyncRelayCommand(async () => { });
+        
+        // Add some design-time data
+        RecentAttendance.Add(new RecentAttendanceItem("John Doe", "IT", "2023-10-01", "09:00", "17:00", "Complete"));
+        RecentAttendance.Add(new RecentAttendanceItem("Jane Smith", "HR", "2023-10-01", "08:30", "16:30", "Complete"));
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from events
+        _dataRefreshService.AttendanceChanged -= OnAttendanceChanged;
+        _dataRefreshService.EmployeesChanged -= OnEmployeesChanged;
+        _dataRefreshService.DepartmentsChanged -= OnDepartmentsChanged;
+    }
+
+    private void OnAttendanceChanged(object? sender, EventArgs e)
+    {
+        _ = LoadDashboardDataAsync();
+    }
+
+    private void OnEmployeesChanged(object? sender, EventArgs e)
+    {
+        _ = LoadDashboardDataAsync();
+    }
+
+    private void OnDepartmentsChanged(object? sender, EventArgs e)
+    {
         _ = LoadDashboardDataAsync();
     }
 

@@ -84,7 +84,7 @@
                     
                     <StackPanel Grid.Column="1" Margin="8,0,0,0">
                         <TextBlock Text="Phone Number" Classes="label"/>
-                        <TextBox Text="{Binding PhoneNumber}" Watermark="09123456789"/>
+                        <TextBox Text="{Binding PhoneNumber}" Watermark="0701234567"/>
                     </StackPanel>
                 </Grid>
                 

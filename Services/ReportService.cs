@@ -6,7 +6,7 @@ namespace AttandenceDesktop.Services
 {
     public class ReportService
     {
-        private readonly ApplicationDbContext _context;
+        private readonly Func<ApplicationDbContext> _contextFactory;
         private readonly AttendanceService _attendanceService;
         private readonly WorkCalendarService _workCalendarService;
         private readonly WorkScheduleService _workScheduleService;
@@ -17,23 +17,41 @@ namespace AttandenceDesktop.Services
             WorkCalendarService workCalendarService,
             WorkScheduleService workScheduleService)
         {
-            _context = context;
+            _contextFactory = () => context;
             _attendanceService = attendanceService;
             _workCalendarService = workCalendarService;
             _workScheduleService = workScheduleService;
         }
         
+        public ReportService(
+            Func<ApplicationDbContext> contextFactory,
+            AttendanceService attendanceService,
+            WorkCalendarService workCalendarService,
+            WorkScheduleService workScheduleService)
+        {
+            _contextFactory = contextFactory;
+            _attendanceService = attendanceService;
+            _workCalendarService = workCalendarService;
+            _workScheduleService = workScheduleService;
+        }
+        
+        private ApplicationDbContext NewCtx() => _contextFactory();
+        
         public async Task<List<AttendanceReportItem>> GenerateEmployeeAttendanceReportAsync(
             int employeeId, DateTime startDate, DateTime endDate)
         {
-            var attendances = await _context.Attendances
+            using var ctx = NewCtx();
+            var attendances = await ctx.Attendances
                 .Include(a => a.Employee)
+                .ThenInclude(e => e.Department)
                 .Where(a => a.EmployeeId == employeeId && a.Date >= startDate && a.Date <= endDate)
                 .OrderBy(a => a.Date)
                 .ToListAsync();
                 
             var report = new List<AttendanceReportItem>();
-            var employee = await _context.Employees.FindAsync(employeeId);
+            var employee = await ctx.Employees
+                .Include(e => e.Department)
+                .FirstOrDefaultAsync(e => e.Id == employeeId);
             
             if (employee == null)
             {
@@ -45,21 +63,13 @@ namespace AttandenceDesktop.Services
             
             foreach (var attendance in attendances)
             {
-                var isLate = false;
-                var isEarlyDeparture = false;
-                var isHoliday = false;
-                var isNonWorkingDay = false;
-                var isOvertime = false;
+                bool isHoliday = false;
+                bool isNonWorkingDay = false;
                 
-                if (attendance.CheckInTime.HasValue)
-                {
-                    isLate = await _attendanceService.IsLateCheckInAsync(employeeId, attendance.CheckInTime.Value);
-                }
-                
-                if (attendance.CheckOutTime.HasValue)
-                {
-                    isEarlyDeparture = await _attendanceService.IsEarlyCheckOutAsync(employeeId, attendance.CheckOutTime.Value);
-                }
+                // Use the flags directly from the attendance record
+                bool isLate = attendance.IsLateArrival;
+                bool isEarlyDeparture = attendance.IsEarlyDeparture;
+                bool isOvertime = attendance.OvertimeMinutes.HasValue && attendance.OvertimeMinutes.Value.TotalMinutes > 0;
                 
                 // Check if the day is a holiday or non-working day
                 isHoliday = !await _workCalendarService.IsWorkingDateAsync(attendance.Date);
@@ -71,12 +81,57 @@ namespace AttandenceDesktop.Services
                     isNonWorkingDay = true;
                 }
                 
-                // Calculate overtime (if worked more than expected hours on a working day)
-                if (attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue && isWorkingDay)
+                // Determine the status based on attendance flags
+                string status;
+                if (!attendance.IsComplete)
                 {
-                    var expectedHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, attendance.Date);
-                    var workedHours = attendance.WorkDuration?.TotalHours ?? 0;
-                    isOvertime = workedHours > expectedHours;
+                    status = "Incomplete";
+                }
+                else if (isLate && isEarlyDeparture)
+                {
+                    status = "Late & Left Early";
+                }
+                else if (isLate)
+                {
+                    // Check if this is a half-day attendance rather than just late arrival
+                    var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, attendance.Date);
+                    var halfDayHours = expectedWorkHours / 2.0;
+                    
+                    if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                    {
+                        status = "Half Day";
+                    }
+                    else
+                    {
+                        status = "Late Arrival";
+                    }
+                }
+                else if (isEarlyDeparture)
+                {
+                    // Also check if early departure is actually a half day
+                    var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, attendance.Date);
+                    var halfDayHours = expectedWorkHours / 2.0;
+                    
+                    if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                    {
+                        status = "Half Day";
+                    }
+                    else
+                    {
+                        status = "Early Departure";
+                    }
+                }
+                else if (attendance.IsEarlyArrival)
+                {
+                    status = "Early Arrival";
+                }
+                else if (isOvertime)
+                {
+                    status = "Overtime";
+                }
+                else
+                {
+                    status = "Present";
                 }
                 
                 report.Add(new AttendanceReportItem
@@ -88,15 +143,18 @@ namespace AttandenceDesktop.Services
                     CheckInTime = attendance.CheckInTime,
                     CheckOutTime = attendance.CheckOutTime,
                     WorkDuration = attendance.WorkDuration,
-                    Status = attendance.IsComplete 
-                        ? (isEarlyDeparture ? "Early Departure" : (isLate ? "Late Arrival" : "Present"))
-                        : "Incomplete",
+                    Status = status,
                     IsLate = isLate,
                     IsEarlyDeparture = isEarlyDeparture,
                     IsHoliday = isHoliday,
                     IsNonWorkingDay = isNonWorkingDay,
                     IsOvertime = isOvertime,
-                    Notes = attendance.Notes
+                    IsEarlyArrival = attendance.IsEarlyArrival,
+                    Notes = attendance.Notes,
+                    LateMinutes = attendance.LateMinutes,
+                    EarlyDepartureMinutes = attendance.EarlyDepartureMinutes,
+                    OvertimeMinutes = attendance.OvertimeMinutes,
+                    EarlyArrivalMinutes = attendance.EarlyArrivalMinutes
                 });
             }
             
@@ -160,7 +218,8 @@ namespace AttandenceDesktop.Services
         public async Task<List<AttendanceReportItem>> GenerateDepartmentAttendanceReportAsync(
             int departmentId, DateTime startDate, DateTime endDate)
         {
-            var employees = await _context.Employees
+            var employees = await _contextFactory().Employees
+                .Include(e => e.Department)
                 .Where(e => e.DepartmentId == departmentId)
                 .ToListAsync();
                 
@@ -179,7 +238,9 @@ namespace AttandenceDesktop.Services
         public async Task<List<AttendanceReportItem>> GenerateCompanyAttendanceReportAsync(
             DateTime startDate, DateTime endDate)
         {
-            var employees = await _context.Employees.ToListAsync();
+            var employees = await _contextFactory().Employees
+                .Include(e => e.Department)
+                .ToListAsync();
             var report = new List<AttendanceReportItem>();
             
             foreach (var employee in employees)
@@ -195,19 +256,33 @@ namespace AttandenceDesktop.Services
         // Get statistics for reports
         public AttendanceReportStatistics GetReportStatistics(List<AttendanceReportItem> report)
         {
-            var stats = new AttendanceReportStatistics
-            {
-                TotalDays = report.Select(r => r.Date.Date).Distinct().Count(),
-                PresentDays = report.Count(r => r.Status == "Present"),
-                EarlyDepartureDays = report.Count(r => r.Status == "Early Departure"),
-                LateArrivalDays = report.Count(r => r.Status == "Late Arrival"),
-                AbsentDays = report.Count(r => r.Status == "Absent"),
-                LateArrivals = report.Count(r => r.IsLate),
-                EarlyDepartures = report.Count(r => r.IsEarlyDeparture),
-                Holidays = report.Count(r => r.IsHoliday),
-                NonWorkingDays = report.Count(r => r.IsNonWorkingDay),
-                OvertimeDays = report.Count(r => r.IsOvertime)
-            };
+            var stats = new AttendanceReportStatistics();
+            
+            // Count working days (excluding holidays and non-working days)
+            stats.TotalDays = report.Count(r => !r.IsHoliday && !r.IsNonWorkingDay);
+            
+            // Count present days (with check-in and check-out)
+            stats.PresentDays = report.Count(r => r.CheckInTime.HasValue && r.CheckOutTime.HasValue);
+            
+            // Count absent days
+            stats.AbsentDays = report.Count(r => !r.IsHoliday && !r.IsNonWorkingDay && !r.CheckInTime.HasValue);
+            
+            // Count late arrivals and early departures
+            stats.LateArrivals = report.Count(r => r.IsLate);
+            stats.EarlyDepartures = report.Count(r => r.IsEarlyDeparture);
+            stats.EarlyArrivals = report.Count(r => r.IsEarlyArrival);
+            
+            // Count days with late arrivals and early departures
+            stats.LateArrivalDays = report.Count(r => r.IsLate);
+            stats.EarlyDepartureDays = report.Count(r => r.IsEarlyDeparture);
+            stats.EarlyArrivalDays = report.Count(r => r.IsEarlyArrival);
+            
+            // Count holidays and non-working days
+            stats.Holidays = report.Count(r => r.IsHoliday);
+            stats.NonWorkingDays = report.Count(r => r.IsNonWorkingDay);
+            
+            // Count overtime days
+            stats.OvertimeDays = report.Count(r => r.IsOvertime);
             
             return stats;
         }
@@ -228,7 +303,12 @@ namespace AttandenceDesktop.Services
         public bool IsHoliday { get; set; }
         public bool IsNonWorkingDay { get; set; }
         public bool IsOvertime { get; set; }
+        public bool IsEarlyArrival { get; set; }
         public string Notes { get; set; } = "";
+        public TimeSpan? LateMinutes { get; set; }
+        public TimeSpan? EarlyDepartureMinutes { get; set; }
+        public TimeSpan? OvertimeMinutes { get; set; }
+        public TimeSpan? EarlyArrivalMinutes { get; set; }
     }
     
     public class AttendanceReportStatistics
@@ -239,9 +319,11 @@ namespace AttandenceDesktop.Services
             PresentDays = 0;
             EarlyDepartureDays = 0;
             LateArrivalDays = 0;
+            EarlyArrivalDays = 0;
             AbsentDays = 0;
             LateArrivals = 0;
             EarlyDepartures = 0;
+            EarlyArrivals = 0;
             Holidays = 0;
             NonWorkingDays = 0;
             OvertimeDays = 0;
@@ -251,9 +333,11 @@ namespace AttandenceDesktop.Services
         public int PresentDays { get; set; }
         public int EarlyDepartureDays { get; set; }
         public int LateArrivalDays { get; set; }
+        public int EarlyArrivalDays { get; set; }
         public int AbsentDays { get; set; }
         public int LateArrivals { get; set; }
         public int EarlyDepartures { get; set; }
+        public int EarlyArrivals { get; set; }
         public int Holidays { get; set; }
         public int NonWorkingDays { get; set; }
         public int OvertimeDays { get; set; }
@@ -261,5 +345,6 @@ namespace AttandenceDesktop.Services
         public double AttendanceRate => TotalDays > 0 ? (double)PresentDays / TotalDays * 100 : 0;
         public double PunctualityRate => PresentDays > 0 ? (double)(PresentDays - LateArrivals) / PresentDays * 100 : 0;
         public double OvertimeRate => PresentDays > 0 ? (double)OvertimeDays / PresentDays * 100 : 0;
+        public double EarlyArrivalRate => PresentDays > 0 ? (double)EarlyArrivals / PresentDays * 100 : 0;
     }
 } 

@@ -16,6 +16,16 @@ namespace AttandenceDesktop.ViewModels
             Name = string.Empty;
             StartTime = new TimeSpan(9,0,0);
             EndTime = new TimeSpan(17,0,0);
+            FlexTimeAllowanceMinutes = 15; // Default grace period: 15 minutes
+            
+            // Set default working days (Monday to Friday)
+            IsWorkingDaySunday = false;
+            IsWorkingDayMonday = true;
+            IsWorkingDayTuesday = true;
+            IsWorkingDayWednesday = true;
+            IsWorkingDayThursday = true;
+            IsWorkingDayFriday = true;
+            IsWorkingDaySaturday = false;
         }
 
         public bool IsNew => Id == 0;
@@ -38,6 +48,18 @@ namespace AttandenceDesktop.ViewModels
 
         [Required]
         public TimeSpan EndTime { get; set; }
+        
+        [Range(0, 60, ErrorMessage = "Grace period must be between 0 and 60 minutes")]
+        public int FlexTimeAllowanceMinutes { get; set; }
+        
+        // Working days properties
+        public bool IsWorkingDaySunday { get; set; }
+        public bool IsWorkingDayMonday { get; set; }
+        public bool IsWorkingDayTuesday { get; set; }
+        public bool IsWorkingDayWednesday { get; set; }
+        public bool IsWorkingDayThursday { get; set; }
+        public bool IsWorkingDayFriday { get; set; }
+        public bool IsWorkingDaySaturday { get; set; }
 
         public int? DepartmentId { get; set; }
 
@@ -60,7 +82,16 @@ namespace AttandenceDesktop.ViewModels
                 Name = Name,
                 StartTime = StartTime,
                 EndTime = EndTime,
-                DepartmentId = DepartmentId
+                DepartmentId = DepartmentId,
+                FlexTimeAllowanceMinutes = FlexTimeAllowanceMinutes,
+                // Include working day settings
+                IsWorkingDaySunday = IsWorkingDaySunday,
+                IsWorkingDayMonday = IsWorkingDayMonday,
+                IsWorkingDayTuesday = IsWorkingDayTuesday,
+                IsWorkingDayWednesday = IsWorkingDayWednesday,
+                IsWorkingDayThursday = IsWorkingDayThursday,
+                IsWorkingDayFriday = IsWorkingDayFriday,
+                IsWorkingDaySaturday = IsWorkingDaySaturday
             };
         }
 
@@ -72,6 +103,15 @@ namespace AttandenceDesktop.ViewModels
             StartTime = schedule.StartTime;
             EndTime = schedule.EndTime;
             DepartmentId = schedule.DepartmentId;
+            FlexTimeAllowanceMinutes = schedule.FlexTimeAllowanceMinutes;
+            // Load working day settings
+            IsWorkingDaySunday = schedule.IsWorkingDaySunday;
+            IsWorkingDayMonday = schedule.IsWorkingDayMonday;
+            IsWorkingDayTuesday = schedule.IsWorkingDayTuesday;
+            IsWorkingDayWednesday = schedule.IsWorkingDayWednesday;
+            IsWorkingDayThursday = schedule.IsWorkingDayThursday;
+            IsWorkingDayFriday = schedule.IsWorkingDayFriday;
+            IsWorkingDaySaturday = schedule.IsWorkingDaySaturday;
             SelectedDepartment = _departments.Find(d => d.Id == DepartmentId);
         }
     }

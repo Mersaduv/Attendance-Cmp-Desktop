@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using AttandenceDesktop.Models;
 
 namespace AttandenceDesktop.ViewModels;
 
@@ -19,40 +20,37 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     // Design-time constructor
-    public MainWindowViewModel() : this(CreateDesignDepartmentService())
+    public MainWindowViewModel()
     {
-    }
-
-    public MainWindowViewModel(DepartmentService departmentService)
-    {
-        // Use same in-memory DbContext factory as departmentService
-        var factoryField = departmentService.GetType().GetField("_contextFactory", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var contextFactory = factoryField?.GetValue(departmentService) as Func<ApplicationDbContext>;
-
-        if (contextFactory == null)
-        {
-            // Fallback: create new factory for design time
-            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-                .UseInMemoryDatabase("DesignTimeDB_Fallback").Options;
-            contextFactory = () => new ApplicationDbContext(options);
-        }
-
-        var workScheduleService = new WorkScheduleService(contextFactory);
-        var employeeService = new EmployeeService(contextFactory, workScheduleService);
-        var workCalendarService = new WorkCalendarService(contextFactory);
-        var attendanceService = new AttendanceService(contextFactory, workScheduleService, workCalendarService);
-        var reportService = new ReportService(contextFactory(), attendanceService, workCalendarService, workScheduleService);
-
-        Dashboard = new DashboardViewModel(employeeService, departmentService, attendanceService);
-        Departments = new DepartmentViewModel(departmentService);
-        Attendance = new AttendanceViewModel(employeeService, attendanceService);
-        Employees = new EmployeeViewModel(employeeService, departmentService);
-        WorkSchedules = new WorkScheduleViewModel(workScheduleService, departmentService);
-        WorkCalendars = new WorkCalendarViewModel(workCalendarService);
-        Reports = new ReportViewModel(reportService, employeeService, departmentService);
-
+        // Default empty constructor for design-time
+        // All properties will be initialized with default values
+        Dashboard = new DashboardViewModel();
+        Departments = new DepartmentViewModel();
+        Attendance = new AttendanceViewModel();
+        Employees = new EmployeeViewModel();
+        WorkSchedules = new WorkScheduleViewModel();
+        WorkCalendars = new WorkCalendarViewModel();
+        Reports = new ReportViewModel();
+        
+        // Create mock services for design-time
+        var mockReportService = new ReportService(
+            () => new Data.ApplicationDbContext(new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Data.ApplicationDbContext>().UseInMemoryDatabase("DesignTimeDB").Options),
+            null!,
+            null!,
+            null!);
+        var mockEmployeeService = new Services.EmployeeService(() => null!, null!, null!);
+        var mockDepartmentService = new Services.DepartmentService(() => null!);
+        var mockDataRefreshService = new Services.DataRefreshService();
+        
+        OverviewReports = new OverviewReportViewModel(
+            mockReportService, 
+            mockEmployeeService, 
+            mockDepartmentService, 
+            mockDataRefreshService);
+        
+        // Set current view
         CurrentView = Dashboard;
-
+        
         ShowDashboardCommand = new RelayCommand(() => CurrentView = Dashboard);
         ShowDepartmentsCommand = new RelayCommand(() => CurrentView = Departments);
         ShowEmployeesCommand = new RelayCommand(() => CurrentView = Employees);
@@ -60,6 +58,7 @@ public partial class MainWindowViewModel : ObservableObject
         ShowWorkSchedulesCommand = new RelayCommand(() => CurrentView = WorkSchedules);
         ShowWorkCalendarsCommand = new RelayCommand(() => CurrentView = WorkCalendars);
         ShowReportsCommand = new RelayCommand(() => CurrentView = Reports);
+        ShowOverviewReportsCommand = new RelayCommand(() => CurrentView = OverviewReports);
     }
 
     // Dependency Injection constructor for production use
@@ -70,7 +69,8 @@ public partial class MainWindowViewModel : ObservableObject
         EmployeeViewModel employeeViewModel,
         WorkScheduleViewModel workScheduleViewModel,
         WorkCalendarViewModel workCalendarViewModel,
-        ReportViewModel reportViewModel)
+        ReportViewModel reportViewModel,
+        OverviewReportViewModel overviewReportViewModel)
     {
         Dashboard = dashboardViewModel;
         Departments = departmentViewModel;
@@ -79,6 +79,7 @@ public partial class MainWindowViewModel : ObservableObject
         WorkSchedules = workScheduleViewModel;
         WorkCalendars = workCalendarViewModel;
         Reports = reportViewModel;
+        OverviewReports = overviewReportViewModel;
         
         // Default to Dashboard
         CurrentView = Dashboard;
@@ -91,6 +92,7 @@ public partial class MainWindowViewModel : ObservableObject
         ShowWorkSchedulesCommand = new RelayCommand(() => CurrentView = WorkSchedules);
         ShowWorkCalendarsCommand = new RelayCommand(() => CurrentView = WorkCalendars);
         ShowReportsCommand = new RelayCommand(() => CurrentView = Reports);
+        ShowOverviewReportsCommand = new RelayCommand(() => CurrentView = OverviewReports);
     }
 
     public DashboardViewModel Dashboard { get; }
@@ -100,6 +102,7 @@ public partial class MainWindowViewModel : ObservableObject
     public WorkScheduleViewModel WorkSchedules { get; }
     public WorkCalendarViewModel WorkCalendars { get; }
     public ReportViewModel Reports { get; }
+    public OverviewReportViewModel OverviewReports { get; }
 
     public ICommand ShowDashboardCommand { get; }
     public ICommand ShowDepartmentsCommand { get; }
@@ -108,11 +111,5 @@ public partial class MainWindowViewModel : ObservableObject
     public ICommand ShowWorkSchedulesCommand { get; }
     public ICommand ShowWorkCalendarsCommand { get; }
     public ICommand ShowReportsCommand { get; }
-
-    private static DepartmentService CreateDesignDepartmentService()
-    {
-        var options = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Data.ApplicationDbContext>()
-            .UseInMemoryDatabase("DesignTimeDB").Options;
-        return new Services.DepartmentService(() => new Data.ApplicationDbContext(options));
-    }
+    public ICommand ShowOverviewReportsCommand { get; }
 }

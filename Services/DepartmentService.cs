@@ -7,10 +7,14 @@ namespace AttandenceDesktop.Services
     public class DepartmentService
     {
         private readonly Func<ApplicationDbContext> _contextFactory;
+        private readonly DataRefreshService _dataRefreshService;
 
-        public DepartmentService(Func<ApplicationDbContext> contextFactory)
+        public DepartmentService(
+            Func<ApplicationDbContext> contextFactory,
+            DataRefreshService? dataRefreshService = null) // Optional for design-time constructor
         {
             _contextFactory = contextFactory;
+            _dataRefreshService = dataRefreshService;
         }
 
         // Helper method to obtain a fresh context instance
@@ -33,15 +37,32 @@ namespace AttandenceDesktop.Services
             using var ctx = NewCtx();
             ctx.Departments.Add(department);
             await ctx.SaveChangesAsync();
+            
+            // Notify that departments have changed
+            _dataRefreshService?.NotifyDepartmentsChanged();
+            
             return department;
         }
         
         public async Task<Department> UpdateAsync(Department department)
         {
             using var ctx = NewCtx();
-            ctx.Entry(department).State = EntityState.Modified;
+            var existingDepartment = await ctx.Departments.FindAsync(department.Id);
+            if (existingDepartment == null)
+            {
+                throw new KeyNotFoundException($"Department with ID {department.Id} not found");
+            }
+            
+            // Update properties
+            existingDepartment.Name = department.Name;
+            
+            // Save changes
             await ctx.SaveChangesAsync();
-            return department;
+            
+            // Notify that departments have changed
+            _dataRefreshService?.NotifyDepartmentsChanged();
+            
+            return existingDepartment;
         }
         
         public async Task DeleteAsync(int id)
@@ -52,6 +73,9 @@ namespace AttandenceDesktop.Services
             {
                 ctx.Departments.Remove(department);
                 await ctx.SaveChangesAsync();
+                
+                // Notify that departments have changed
+                _dataRefreshService?.NotifyDepartmentsChanged();
             }
         }
     }

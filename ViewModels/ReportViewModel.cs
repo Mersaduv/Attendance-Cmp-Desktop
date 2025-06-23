@@ -2,6 +2,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using System.Linq;
+using System.Collections.Generic;
 using AttandenceDesktop.Models;
 using AttandenceDesktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -16,11 +18,12 @@ namespace AttandenceDesktop.ViewModels
         Company
     }
     
-    public partial class ReportViewModel : ViewModelBase
+    public partial class ReportViewModel : ViewModelBase, IDisposable
     {
         private readonly ReportService _reportService;
         private readonly EmployeeService _employeeService;
         private readonly DepartmentService _departmentService;
+        private readonly DataRefreshService _dataRefreshService;
         
         private DateTime _startDate = DateTime.Today.AddDays(-30);
         private DateTime _endDate = DateTime.Today;
@@ -30,20 +33,97 @@ namespace AttandenceDesktop.ViewModels
         private bool _isLoading;
         private AttendanceReportStatistics _statistics = new AttendanceReportStatistics();
         
+        // Pagination properties
+        private const int _pageSize = 10;
+        private int _currentPage = 1;
+        private int _totalPages = 1;
+        private bool _hasSummaryPage = false;
+        private List<AttendanceReportItem> _allReportItems = new List<AttendanceReportItem>();
+        private TimeSpan _totalLateMinutes = TimeSpan.Zero;
+        private TimeSpan _totalEarlyDepartureMinutes = TimeSpan.Zero;
+        private TimeSpan _totalOvertimeMinutes = TimeSpan.Zero;
+        
         public ReportViewModel(
             ReportService reportService,
             EmployeeService employeeService,
-            DepartmentService departmentService)
+            DepartmentService departmentService,
+            DataRefreshService dataRefreshService)
         {
             _reportService = reportService;
             _employeeService = employeeService;
             _departmentService = departmentService;
+            _dataRefreshService = dataRefreshService;
             
             GenerateReportCommand = new AsyncRelayCommand(GenerateReportAsync);
             ExportReportCommand = new AsyncRelayCommand(ExportReportAsync);
+            NextPageCommand = new RelayCommand(NextPage, CanGoToNextPage);
+            PreviousPageCommand = new RelayCommand(PreviousPage, CanGoToPreviousPage);
+            
+            // Subscribe to data change events
+            _dataRefreshService.AttendanceChanged += OnAttendanceChanged;
+            _dataRefreshService.EmployeesChanged += OnEmployeesChanged;
+            _dataRefreshService.DepartmentsChanged += OnDepartmentsChanged;
             
             // Initialize data asynchronously
             InitializeDataAsync();
+        }
+        
+        // Parameterless constructor for design-time support
+        public ReportViewModel()
+        {
+            _reportService = null!;
+            _employeeService = null!;
+            _departmentService = null!;
+            _dataRefreshService = null!;
+            
+            GenerateReportCommand = new AsyncRelayCommand(async () => {});
+            ExportReportCommand = new AsyncRelayCommand(async () => {});
+            NextPageCommand = new RelayCommand(() => {});
+            PreviousPageCommand = new RelayCommand(() => {});
+            
+            // Add design-time data
+            Employees = new ObservableCollection<Employee>();
+            Departments = new ObservableCollection<Department>();
+            ReportItems = new ObservableCollection<AttendanceReportItem>();
+            
+            // Create sample statistics
+            _statistics = new AttendanceReportStatistics();
+            // We can't set read-only properties directly, but we can create a new instance with some values
+            _statistics = new AttendanceReportStatistics
+            {
+                PresentDays = 20,
+                AbsentDays = 2,
+                LateArrivals = 3,
+                EarlyDepartures = 1,
+                OvertimeDays = 5
+            };
+        }
+        
+        public void Dispose()
+        {
+            // Unsubscribe from events
+            _dataRefreshService.AttendanceChanged -= OnAttendanceChanged;
+            _dataRefreshService.EmployeesChanged -= OnEmployeesChanged;
+            _dataRefreshService.DepartmentsChanged -= OnDepartmentsChanged;
+        }
+        
+        private void OnAttendanceChanged(object? sender, EventArgs e)
+        {
+            // If we have an active report, refresh it
+            if (_allReportItems.Count > 0)
+            {
+                _ = GenerateReportAsync();
+            }
+        }
+        
+        private void OnEmployeesChanged(object? sender, EventArgs e)
+        {
+            _ = LoadEmployeesAsync();
+        }
+        
+        private void OnDepartmentsChanged(object? sender, EventArgs e)
+        {
+            _ = LoadDepartmentsAsync();
         }
         
         private async Task InitializeDataAsync()
@@ -115,6 +195,75 @@ namespace AttandenceDesktop.ViewModels
         public bool IsEmployeeSelectionVisible => ReportTypeIndex == 0; // Employee
         public bool IsDepartmentSelectionVisible => ReportTypeIndex == 1; // Department
         
+        // Pagination properties
+        public int CurrentPage
+        {
+            get => _currentPage;
+            set
+            {
+                if (_currentPage != value && value >= 1 && value <= _totalPages)
+                {
+                    SetProperty(ref _currentPage, value);
+                    UpdateDisplayedItems();
+                    
+                    // Update command availability
+                    ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
+                    ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+                    
+                    OnPropertyChanged(nameof(PageInfo));
+                    OnPropertyChanged(nameof(IsLastPage));
+                }
+            }
+        }
+        
+        public int TotalPages
+        {
+            get => _totalPages;
+            private set => SetProperty(ref _totalPages, value);
+        }
+        
+        public string PageInfo => $"{CurrentPage} / {TotalPages}";
+        
+        public bool IsLastPage => _hasSummaryPage && CurrentPage == TotalPages;
+        
+        public ICommand NextPageCommand { get; }
+        public ICommand PreviousPageCommand { get; }
+        
+        private bool CanGoToNextPage() => CurrentPage < TotalPages && TotalPages > 1;
+        private bool CanGoToPreviousPage() => CurrentPage > 1;
+        
+        private void NextPage()
+        {
+            if (CurrentPage < TotalPages)
+            {
+                CurrentPage++;
+                ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
+                ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+            }
+        }
+        
+        private void PreviousPage()
+        {
+            if (CurrentPage > 1)
+            {
+                CurrentPage--;
+                ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
+                ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+            }
+        }
+        
+        // Summary information for the last page
+        public int AbsentDays => Statistics.AbsentDays;
+        
+        public TimeSpan TotalLateMinutes => _totalLateMinutes;
+        public string TotalLateTime => $"{(int)TotalLateMinutes.TotalHours:00}:{TotalLateMinutes.Minutes:00}";
+        
+        public TimeSpan TotalEarlyDepartureMinutes => _totalEarlyDepartureMinutes;
+        public string TotalEarlyDepartureTime => $"{(int)TotalEarlyDepartureMinutes.TotalHours:00}:{TotalEarlyDepartureMinutes.Minutes:00}";
+        
+        public TimeSpan TotalOvertimeMinutes => _totalOvertimeMinutes;
+        public string TotalOvertimeTime => $"{(int)TotalOvertimeMinutes.TotalHours:00}:{TotalOvertimeMinutes.Minutes:00}";
+        
         public ObservableCollection<Employee> Employees { get; } = new();
         public ObservableCollection<Department> Departments { get; } = new();
         public ObservableCollection<AttendanceReportItem> ReportItems { get; } = new();
@@ -150,49 +299,116 @@ namespace AttandenceDesktop.ViewModels
         
         private async Task GenerateReportAsync()
         {
+            Program.LogMessage($"ReportViewModel: Starting report generation. Type: {(ReportTypeEnum)_reportTypeIndex}, StartDate: {StartDate:yyyy-MM-dd}, EndDate: {EndDate:yyyy-MM-dd}");
+            
             if (StartDate > EndDate)
             {
-                // Show error message
+                Program.LogMessage("ReportViewModel: Error - Start date is after end date");
+                // Handle error - we could show a message to the user here
                 return;
             }
             
             IsLoading = true;
-            ReportItems.Clear();
+            _allReportItems.Clear();
+            _totalPages = 1;
+            _currentPage = 1;
+            
+            Program.LogMessage($"ReportViewModel: Cleared previous report data. Starting data fetch...");
             
             try
             {
-                var report = new System.Collections.Generic.List<AttendanceReportItem>();
+                List<AttendanceReportItem> reportItems = new();
                 
-                switch (ReportTypeIndex)
+                // Based on the report type, call the appropriate service method
+                switch ((ReportTypeEnum)ReportTypeIndex)
                 {
-                    case 0: // Employee
+                    case ReportTypeEnum.Employee:
                         if (SelectedEmployeeId.HasValue)
                         {
-                            report = await _reportService.GenerateEmployeeAttendanceReportAsync(
+                            Program.LogMessage($"ReportViewModel: Generating employee report for employee ID: {SelectedEmployeeId}");
+                            reportItems = await _reportService.GenerateEmployeeAttendanceReportAsync(
                                 SelectedEmployeeId.Value, StartDate, EndDate);
+                            Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} records for employee");
+                        }
+                        else
+                        {
+                            Program.LogMessage("ReportViewModel: Error - No employee selected for employee report");
                         }
                         break;
                         
-                    case 1: // Department
+                    case ReportTypeEnum.Department:
                         if (SelectedDepartmentId.HasValue)
                         {
-                            report = await _reportService.GenerateDepartmentAttendanceReportAsync(
+                            Program.LogMessage($"ReportViewModel: Generating department report for department ID: {SelectedDepartmentId}");
+                            reportItems = await _reportService.GenerateDepartmentAttendanceReportAsync(
                                 SelectedDepartmentId.Value, StartDate, EndDate);
+                            Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} records for department");
+                        }
+                        else
+                        {
+                            Program.LogMessage("ReportViewModel: Error - No department selected for department report");
                         }
                         break;
                         
-                    case 2: // Company
-                        report = await _reportService.GenerateCompanyAttendanceReportAsync(
+                    case ReportTypeEnum.Company:
+                        Program.LogMessage("ReportViewModel: Generating company-wide report");
+                        reportItems = await _reportService.GenerateCompanyAttendanceReportAsync(
                             StartDate, EndDate);
+                        Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} records for company report");
                         break;
                 }
                 
-                foreach (var item in report)
+                // Calculate statistics
+                Program.LogMessage("ReportViewModel: Calculating report statistics");
+                _allReportItems = reportItems;
+                _statistics = _reportService.GetReportStatistics(reportItems);
+                
+                // Calculate aggregate minutes
+                _totalLateMinutes = TimeSpan.Zero;
+                _totalEarlyDepartureMinutes = TimeSpan.Zero;
+                _totalOvertimeMinutes = TimeSpan.Zero;
+                
+                foreach (var item in reportItems)
                 {
-                    ReportItems.Add(item);
+                    if (item.LateMinutes.HasValue)
+                        _totalLateMinutes += item.LateMinutes.Value;
+                    if (item.EarlyDepartureMinutes.HasValue)
+                        _totalEarlyDepartureMinutes += item.EarlyDepartureMinutes.Value;
+                    if (item.OvertimeMinutes.HasValue)
+                        _totalOvertimeMinutes += item.OvertimeMinutes.Value;
                 }
                 
-                Statistics = _reportService.GetReportStatistics(report);
+                Program.LogMessage($"ReportViewModel: Calculated time totals - Late: {_totalLateMinutes}, Early Departure: {_totalEarlyDepartureMinutes}, Overtime: {_totalOvertimeMinutes}");
+                
+                // Calculate pagination
+                int itemCount = reportItems.Count;
+                _hasSummaryPage = itemCount > 0 ? true : false;
+                
+                _totalPages = (itemCount / _pageSize) + (_hasSummaryPage ? 2 : 1);
+                if (itemCount % _pageSize > 0)
+                    _totalPages--;
+                    
+                Program.LogMessage($"ReportViewModel: Pagination setup - Items: {itemCount}, Pages: {_totalPages}");
+                
+                // Update UI bindings
+                OnPropertyChanged(nameof(TotalPages));
+                OnPropertyChanged(nameof(PageInfo));
+                OnPropertyChanged(nameof(Statistics));
+                OnPropertyChanged(nameof(TotalLateMinutes));
+                OnPropertyChanged(nameof(TotalLateTime));
+                OnPropertyChanged(nameof(TotalEarlyDepartureMinutes));
+                OnPropertyChanged(nameof(TotalEarlyDepartureTime));
+                OnPropertyChanged(nameof(TotalOvertimeMinutes));
+                OnPropertyChanged(nameof(TotalOvertimeTime));
+                
+                // Update displayed items for the current page
+                UpdateDisplayedItems();
+                Program.LogMessage("ReportViewModel: Report generation completed successfully");
+            }
+            catch (Exception ex)
+            {
+                Program.LogMessage($"ReportViewModel: ERROR during report generation - {ex.Message}\n{ex.StackTrace}");
+                // Handle error - could show message to user
             }
             finally
             {
@@ -200,9 +416,55 @@ namespace AttandenceDesktop.ViewModels
             }
         }
         
+        private void UpdateDisplayedItems()
+        {
+            Program.LogMessage($"ReportViewModel: Updating displayed items for page {CurrentPage} of {TotalPages}");
+            
+            ReportItems.Clear();
+            
+            if (_allReportItems.Count == 0)
+            {
+                Program.LogMessage("ReportViewModel: No items to display");
+                return;
+            }
+            
+            // Check if we're showing the summary page (last page)
+            if (_hasSummaryPage && CurrentPage == TotalPages)
+            {
+                Program.LogMessage("ReportViewModel: Displaying summary page");
+                // This is the summary page - we'll just leave it empty for now
+                // The statistics are shown separately in the UI
+                return;
+            }
+            
+            // Calculate start and end index for the current page
+            int startIndex = (CurrentPage - 1) * _pageSize;
+            if (startIndex < 0) startIndex = 0;
+            
+            // If startIndex is beyond our collection, show empty page
+            if (startIndex >= _allReportItems.Count)
+            {
+                Program.LogMessage("ReportViewModel: Start index beyond collection bounds");
+                return;
+            }
+            
+            // Calculate end index, ensuring we don't go beyond collection bounds
+            int endIndex = Math.Min(startIndex + _pageSize - 1, _allReportItems.Count - 1);
+            
+            Program.LogMessage($"ReportViewModel: Displaying items {startIndex} to {endIndex} (Total: {_allReportItems.Count})");
+            
+            // Add items for the current page
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                ReportItems.Add(_allReportItems[i]);
+            }
+            
+            Program.LogMessage($"ReportViewModel: Added {ReportItems.Count} items to display");
+        }
+        
         private async Task ExportReportAsync()
         {
-            if (ReportItems.Count == 0)
+            if (_allReportItems.Count == 0)
             {
                 // Show error message
                 return;

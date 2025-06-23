@@ -10,16 +10,19 @@ using AttandenceDesktop.Services;
 
 namespace AttandenceDesktop.ViewModels;
 
-public partial class AttendanceViewModel : ViewModelBase
+public partial class AttendanceViewModel : ViewModelBase, IDisposable
 {
     private readonly EmployeeService _employeeService;
     private readonly AttendanceService _attendanceService;
+    private readonly DataRefreshService _dataRefreshService;
 
     public AttendanceViewModel(EmployeeService employeeService,
-                               AttendanceService attendanceService)
+                               AttendanceService attendanceService,
+                               DataRefreshService dataRefreshService)
     {
         _employeeService = employeeService;
         _attendanceService = attendanceService;
+        _dataRefreshService = dataRefreshService;
 
         Employees = new ObservableCollection<Employee>();
         TodayAttendance = new ObservableCollection<Attendance>();
@@ -29,17 +32,61 @@ public partial class AttendanceViewModel : ViewModelBase
         CheckOutCommand = new AsyncRelayCommand(CheckOutAsync, CanCheckOut);
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         SetFilterCommand = new RelayCommand<string>(s => ApplyFilter(Enum.Parse<AttendanceStatus>(s)));
+        RecalculateMetricsCommand = new AsyncRelayCommand(RecalculateMetricsAsync);
 
         var timer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Normal,
             (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss"));
         timer.Start();
 
+        // Subscribe to data change events
+        _dataRefreshService.AttendanceChanged += OnAttendanceChanged;
+        _dataRefreshService.EmployeesChanged += OnEmployeesChanged;
+
+        _ = InitializeAsync();
+    }
+
+    // Parameterless constructor for design-time support
+    public AttendanceViewModel()
+    {
+        _employeeService = null!;
+        _attendanceService = null!;
+        _dataRefreshService = null!;
+        
+        Employees = new ObservableCollection<Employee>();
+        TodayAttendance = new ObservableCollection<Attendance>();
+        FilteredAttendance = new ObservableCollection<Attendance>();
+        
+        CheckInCommand = new AsyncRelayCommand(async () => { }, () => false);
+        CheckOutCommand = new AsyncRelayCommand(async () => { }, () => false);
+        RefreshCommand = new AsyncRelayCommand(async () => { });
+        SetFilterCommand = new RelayCommand<string>(_ => { });
+        RecalculateMetricsCommand = new AsyncRelayCommand(async () => { });
+        
+        // Set current time for design-time
+        CurrentTime = "12:00:00";
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from events
+        _dataRefreshService.AttendanceChanged -= OnAttendanceChanged;
+        _dataRefreshService.EmployeesChanged -= OnEmployeesChanged;
+    }
+
+    private void OnAttendanceChanged(object? sender, EventArgs e)
+    {
+        _ = RefreshAsync();
+    }
+
+    private void OnEmployeesChanged(object? sender, EventArgs e)
+    {
         _ = InitializeAsync();
     }
 
     private async Task InitializeAsync()
     {
         var emps = await _employeeService.GetAllAsync();
+        Employees.Clear();
         foreach (var e in emps) Employees.Add(e);
 
         await RefreshAsync();
@@ -72,6 +119,7 @@ public partial class AttendanceViewModel : ViewModelBase
     public IAsyncRelayCommand CheckOutCommand { get; }
     public IAsyncRelayCommand RefreshCommand { get; }
     public IRelayCommand<string> SetFilterCommand { get; }
+    public IAsyncRelayCommand RecalculateMetricsCommand { get; }
 
     #endregion
 
@@ -96,6 +144,9 @@ public partial class AttendanceViewModel : ViewModelBase
         {
             AttendanceStatus.CheckedIn => TodayAttendance.Where(a => a.CheckInTime.HasValue && !a.CheckOutTime.HasValue),
             AttendanceStatus.CheckedOut => TodayAttendance.Where(a => a.CheckInTime.HasValue && a.CheckOutTime.HasValue),
+            AttendanceStatus.Late => TodayAttendance.Where(a => a.IsLateArrival),
+            AttendanceStatus.EarlyDeparture => TodayAttendance.Where(a => a.IsEarlyDeparture),
+            AttendanceStatus.Overtime => TodayAttendance.Where(a => a.IsOvertime),
             _ => TodayAttendance
         };
         foreach (var att in list) FilteredAttendance.Add(att);
@@ -143,13 +194,17 @@ public partial class AttendanceViewModel : ViewModelBase
         try
         {
             await _attendanceService.CheckInAsync(SelectedEmployeeId);
-            _alertKind = "Success";
+            AlertKind = "Success";
             Message = "Check-in recorded successfully";
             await RefreshAsync();
+            
+            // Immediately update UI to allow check out
+            SelectedEmployeeStatus = AttendanceStatus.CheckedIn;
+            CheckOutCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex)
         {
-            _alertKind = "Error";
+            AlertKind = "Error";
             Message = ex.Message;
         }
     }
@@ -159,25 +214,39 @@ public partial class AttendanceViewModel : ViewModelBase
         if (SelectedEmployeeId == 0) return;
         try
         {
-            var res = await _attendanceService.CheckOutAsync(SelectedEmployeeId);
-            if (res == null)
-            {
-                _alertKind = "Warning";
-                Message = "No check-in found. Please check-in first.";
-            }
-            else
-            {
-                _alertKind = "Success";
-                Message = "Check-out recorded successfully";
-            }
+            await _attendanceService.CheckOutAsync(SelectedEmployeeId);
+            AlertKind = "Success";
+            Message = "Check-out recorded successfully";
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            _alertKind = "Error";
-            Message = ex.Message;
+            AlertKind = "Error";
+            Message = $"Error during check-out: {ex.Message}";
         }
     }
 
-    public enum AttendanceStatus { All, NotCheckedIn, CheckedIn, CheckedOut }
+    private async Task RecalculateMetricsAsync()
+    {
+        try
+        {
+            Message = "Recalculating attendance metrics...";
+            AlertKind = "Warning";
+            
+            await _attendanceService.RecalculateAllAttendanceMetricsAsync();
+            
+            Message = "Metrics recalculated successfully!";
+            AlertKind = "Success";
+            
+            // Reload attendance data
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Message = $"Error recalculating metrics: {ex.Message}";
+            AlertKind = "Error";
+        }
+    }
+
+    public enum AttendanceStatus { All, NotCheckedIn, CheckedIn, CheckedOut, Late, EarlyDeparture, Overtime }
 } 

@@ -37,5 +37,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.6" />
+    <PackageReference Include="ReactiveUI" Version="20.1.1" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.0" />
   </ItemGroup>
 </Project>

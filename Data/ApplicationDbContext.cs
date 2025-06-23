@@ -2,6 +2,8 @@
 // using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using AttandenceDesktop.Models;
+using System.IO;
+using System;
 
 namespace AttandenceDesktop.Data;
 
@@ -55,5 +57,65 @@ public class ApplicationDbContext : DbContext
                 Description = "Standard work schedule from 9 AM to 5 PM, Monday to Friday"
             }
         );
+
+        // Configure entity relationships and constraints
+        
+        // Configure Employee entity
+        builder.Entity<Employee>()
+            .HasOne(e => e.Department)
+            .WithMany(d => d.Employees)
+            .HasForeignKey(e => e.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+            
+        builder.Entity<Employee>()
+            .HasOne(e => e.WorkSchedule)
+            .WithMany(w => w.Employees)
+            .HasForeignKey(e => e.WorkScheduleId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        // Configure Department entity
+        builder.Entity<Department>()
+            .HasMany(d => d.Employees)
+            .WithOne(e => e.Department)
+            .HasForeignKey(e => e.DepartmentId);
+        
+        // Configure WorkSchedule entity
+        builder.Entity<WorkSchedule>()
+            .HasMany(w => w.Employees)
+            .WithOne(e => e.WorkSchedule)
+            .HasForeignKey(e => e.WorkScheduleId);
+            
+        // Configure Attendance entity
+        builder.Entity<Attendance>()
+            .HasOne(a => a.Employee)
+            .WithMany()
+            .HasForeignKey(a => a.EmployeeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Ensure IsOvertime is properly mapped
+        builder.Entity<Attendance>()
+            .Property(a => a.IsOvertime)
+            .HasDefaultValue(false);
+            
+        // Ensure IsEarlyArrival is properly mapped
+        builder.Entity<Attendance>()
+            .Property(a => a.IsEarlyArrival)
+            .HasDefaultValue(false);
+            
+        // Configure AttendanceCode property
+        builder.Entity<Attendance>()
+            .Property(a => a.AttendanceCode)
+            .HasMaxLength(2)
+            .HasDefaultValue("");
+    }
+    
+    // Add static method to create a configured instance for use in services
+    public static ApplicationDbContext Create()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+        var dbPath = Path.Combine(AppContext.BaseDirectory, "TimeAttendance.db");
+        var connectionString = $"Data Source={dbPath}";
+        optionsBuilder.UseSqlite(connectionString);
+        return new ApplicationDbContext(optionsBuilder.Options);
     }
 }

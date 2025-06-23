@@ -1,16 +1,24 @@
 using Microsoft.EntityFrameworkCore;
 using AttandenceDesktop.Data;
 using AttandenceDesktop.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace AttandenceDesktop.Services
 {
     public class WorkCalendarService
     {
         private readonly Func<ApplicationDbContext> _contextFactory;
+        private readonly DataRefreshService _dataRefreshService;
 
-        public WorkCalendarService(Func<ApplicationDbContext> contextFactory)
+        public WorkCalendarService(
+            Func<ApplicationDbContext> contextFactory,
+            DataRefreshService dataRefreshService)
         {
             _contextFactory = contextFactory;
+            _dataRefreshService = dataRefreshService;
         }
 
         private ApplicationDbContext NewCtx() => _contextFactory();
@@ -19,9 +27,19 @@ namespace AttandenceDesktop.Services
         {
             using (var context = NewCtx())
             {
-                return await context.WorkCalendars
-                    .OrderBy(wc => wc.Date)
-                    .ToListAsync();
+                try 
+                {
+                    return await context.WorkCalendars
+                        .OrderBy(wc => wc.Date)
+                        .ToListAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in GetAllAsync: {ex.Message}");
+                    
+                    // Return empty list as fallback
+                    return new List<WorkCalendar>();
+                }
             }
         }
         
@@ -29,8 +47,16 @@ namespace AttandenceDesktop.Services
         {
             using (var context = NewCtx())
             {
-                return await context.WorkCalendars
-                    .FirstOrDefaultAsync(wc => wc.Id == id);
+                try
+                {
+                    return await context.WorkCalendars
+                        .FirstOrDefaultAsync(wc => wc.Id == id);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in GetByIdAsync: {ex.Message}");
+                    return null;
+                }
             }
         }
         
@@ -38,10 +64,18 @@ namespace AttandenceDesktop.Services
         {
             using (var context = NewCtx())
             {
-                return await context.WorkCalendars
-                    .Where(wc => wc.Date >= startDate && wc.Date <= endDate)
-                    .OrderBy(wc => wc.Date)
-                    .ToListAsync();
+                try
+                {
+                    return await context.WorkCalendars
+                        .Where(wc => wc.Date >= startDate && wc.Date <= endDate)
+                        .OrderBy(wc => wc.Date)
+                        .ToListAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in GetByDateRangeAsync: {ex.Message}");
+                    return new List<WorkCalendar>();
+                }
             }
         }
         
@@ -49,10 +83,18 @@ namespace AttandenceDesktop.Services
         {
             using (var context = NewCtx())
             {
-                return await context.WorkCalendars
-                    .Where(wc => wc.Date.Month == month && wc.Date.Year == year)
-                    .OrderBy(wc => wc.Date)
-                    .ToListAsync();
+                try
+                {
+                    return await context.WorkCalendars
+                        .Where(wc => wc.Date.Month == month && wc.Date.Year == year)
+                        .OrderBy(wc => wc.Date)
+                        .ToListAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in GetByMonthYearAsync: {ex.Message}");
+                    return new List<WorkCalendar>();
+                }
             }
         }
         
@@ -60,22 +102,38 @@ namespace AttandenceDesktop.Services
         {
             using (var context = NewCtx())
             {
-                return await context.WorkCalendars
-                    .FirstOrDefaultAsync(wc => 
-                        wc.Date.Year == date.Year && 
-                        wc.Date.Month == date.Month && 
-                        wc.Date.Day == date.Day);
+                try
+                {
+                    return await context.WorkCalendars
+                        .Where(wc => wc.Date.Day == date.Day && 
+                                    wc.Date.Month == date.Month && 
+                                    (wc.Date.Year == date.Year || wc.IsRecurringAnnually))
+                        .FirstOrDefaultAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in GetByDateAsync: {ex.Message}");
+                    return null;
+                }
             }
         }
         
         public async Task<List<WorkCalendar>> GetRecurringEntriesForMonthAsync(int month)
         {
-            // Get recurring entries (like annual holidays) that occur in the specified month
             using (var context = NewCtx())
             {
-                return await context.WorkCalendars
-                    .Where(wc => wc.IsRecurringAnnually && wc.Date.Month == month)
-                    .ToListAsync();
+                try
+                {
+                    return await context.WorkCalendars
+                        .Where(wc => wc.IsRecurringAnnually && wc.Date.Month == month)
+                        .OrderBy(wc => wc.Date.Day)
+                        .ToListAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in GetRecurringEntriesForMonthAsync: {ex.Message}");
+                    return new List<WorkCalendar>();
+                }
             }
         }
         
@@ -85,31 +143,32 @@ namespace AttandenceDesktop.Services
             {
                 context.WorkCalendars.Add(workCalendar);
                 await context.SaveChangesAsync();
+                
+                _dataRefreshService.NotifyWorkCalendarsChanged();
                 return workCalendar;
             }
         }
         
         public async Task<WorkCalendar> UpdateAsync(WorkCalendar workCalendar)
         {
-            // Find the existing entity
             using (var context = NewCtx())
             {
-                var existingCalendar = await context.WorkCalendars.FindAsync(workCalendar.Id);
-                if (existingCalendar == null)
+                var existingEntry = await context.WorkCalendars.FindAsync(workCalendar.Id);
+                if (existingEntry == null)
                 {
-                    throw new KeyNotFoundException($"Work Calendar entry with ID {workCalendar.Id} not found");
+                    throw new KeyNotFoundException($"WorkCalendar with ID {workCalendar.Id} not found");
                 }
                 
-                // Update properties
-                existingCalendar.Date = workCalendar.Date;
-                existingCalendar.Name = workCalendar.Name;
-                existingCalendar.Description = workCalendar.Description;
-                existingCalendar.EntryType = workCalendar.EntryType;
-                existingCalendar.IsRecurringAnnually = workCalendar.IsRecurringAnnually;
+                existingEntry.Date = workCalendar.Date;
+                existingEntry.Name = workCalendar.Name;
+                existingEntry.Description = workCalendar.Description;
+                existingEntry.EntryType = workCalendar.EntryType;
+                existingEntry.IsRecurringAnnually = workCalendar.IsRecurringAnnually;
                 
-                // Save changes
                 await context.SaveChangesAsync();
-                return existingCalendar;
+                _dataRefreshService.NotifyWorkCalendarsChanged();
+                
+                return existingEntry;
             }
         }
         
@@ -122,55 +181,82 @@ namespace AttandenceDesktop.Services
                 {
                     context.WorkCalendars.Remove(workCalendar);
                     await context.SaveChangesAsync();
+                    _dataRefreshService.NotifyWorkCalendarsChanged();
                 }
             }
         }
         
-        // Method to check if a date is a holiday or non-working day
         public async Task<bool> IsWorkingDateAsync(DateTime date)
         {
-            // Check for exact date match
             using (var context = NewCtx())
             {
-                var calendarEntry = await GetByDateAsync(date);
-                
-                // If no exact match, check recurring entries
-                if (calendarEntry == null)
+                try
                 {
-                    var recurringEntries = await context.WorkCalendars
-                        .Where(wc => wc.IsRecurringAnnually && 
-                               wc.Date.Month == date.Month && 
-                               wc.Date.Day == date.Day)
-                        .ToListAsync();
+                    // Check if it's a holiday or non-working day in the calendar
+                    var calendarEntry = await context.WorkCalendars
+                        .Where(wc => 
+                            (wc.Date.Day == date.Day && wc.Date.Month == date.Month && wc.Date.Year == date.Year) || 
+                            (wc.IsRecurringAnnually && wc.Date.Day == date.Day && wc.Date.Month == date.Month))
+                        .FirstOrDefaultAsync();
                     
-                    calendarEntry = recurringEntries.FirstOrDefault();
+                    if (calendarEntry != null)
+                    {
+                        // If it's a holiday or non-working day, return false
+                        return calendarEntry.EntryType == CalendarEntryType.ShortDay;
+                    }
+                    
+                    // If no calendar entry, check if it's a weekend
+                    return date.DayOfWeek != DayOfWeek.Saturday && date.DayOfWeek != DayOfWeek.Sunday;
                 }
-                
-                // If we found a calendar entry, check its type
-                if (calendarEntry != null)
+                catch (Exception ex)
                 {
-                    return calendarEntry.EntryType != CalendarEntryType.Holiday && 
-                           calendarEntry.EntryType != CalendarEntryType.NonWorkingDay;
+                    System.Diagnostics.Debug.WriteLine($"Error in IsWorkingDateAsync: {ex.Message}");
+                    
+                    // Default to weekday check if there's an error
+                    return date.DayOfWeek != DayOfWeek.Saturday && date.DayOfWeek != DayOfWeek.Sunday;
                 }
-                
-                // If no calendar entry is found, it's a regular working day
-                return true;
             }
         }
         
-        // Method to check if a date is a holiday or non-working day for a specific employee
-        public async Task<bool> IsWorkingDateForEmployeeAsync(int employeeId, DateTime date, WorkScheduleService workScheduleService)
+        public async Task<bool> IsWorkingDateForEmployeeAsync(int employeeId, DateTime date, Lazy<WorkScheduleService> workScheduleService)
         {
-            // First check if it's a calendar holiday or non-working day
-            bool isWorkingDate = await IsWorkingDateAsync(date);
-            
-            // If it's not a holiday or non-working day, check the employee's work schedule
-            if (isWorkingDate)
+            // Check if it's a holiday or special day
+            var isHoliday = !(await IsWorkingDateAsync(date));
+            if (isHoliday)
             {
-                return await workScheduleService.IsWorkingDayForEmployeeAsync(employeeId, date);
+                return false; // It's a holiday, so not a working day
             }
             
-            return false;
+            // Get employee's work schedule
+            var schedule = await workScheduleService.Value.GetEmployeeWorkScheduleAsync(employeeId);
+            if (schedule == null)
+            {
+                return false; // No schedule found
+            }
+            
+            // Check if the day of the week is a working day according to the schedule
+            return schedule.IsWorkingDay(date.DayOfWeek);
+        }
+        
+        // Overload to accept direct WorkScheduleService reference for backward compatibility
+        public async Task<bool> IsWorkingDateForEmployeeAsync(int employeeId, DateTime date, WorkScheduleService workScheduleService)
+        {
+            // Check if it's a holiday or special day
+            var isHoliday = !(await IsWorkingDateAsync(date));
+            if (isHoliday)
+            {
+                return false; // It's a holiday, so not a working day
+            }
+            
+            // Get employee's work schedule
+            var schedule = await workScheduleService.GetEmployeeWorkScheduleAsync(employeeId);
+            if (schedule == null)
+            {
+                return false; // No schedule found
+            }
+            
+            // Check if the day of the week is a working day according to the schedule
+            return schedule.IsWorkingDay(date.DayOfWeek);
         }
     }
 } 

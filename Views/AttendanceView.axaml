@@ -6,6 +6,7 @@
              xmlns:vm="using:AttandenceDesktop.ViewModels"
              xmlns:model="using:AttandenceDesktop.Models"
              xmlns:avalonia="https://github.com/avaloniaui"
+             xmlns:converters="using:AttandenceDesktop.Converters"
              mc:Ignorable="d"
              x:DataType="vm:AttendanceViewModel">
     <Design.DataContext>
@@ -35,8 +36,9 @@
                     <Button Content="Check In" Command="{Binding CheckInCommand}" Classes="primary" />
                     <Button Content="Check Out" Command="{Binding CheckOutCommand}" Classes="secondary" />
                     <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                    <Button Content="Recalculate Metrics" Command="{Binding RecalculateMetricsCommand}" Background="#673AB7" Foreground="White" />
                 </StackPanel>
-                <TextBlock Text="{Binding Message}" Foreground="Red" />
+                <TextBlock Text="{Binding Message}" Foreground="{Binding AlertKind, Converter={StaticResource AlertKindToColorConverter}, FallbackValue=Red}" />
             </StackPanel>
         </Border>
 
@@ -45,6 +47,9 @@
             <Button Content="All" Command="{Binding SetFilterCommand}" CommandParameter="All" />
             <Button Content="Checked In" Command="{Binding SetFilterCommand}" CommandParameter="CheckedIn" Classes="success" />
             <Button Content="Checked Out" Command="{Binding SetFilterCommand}" CommandParameter="CheckedOut" />
+            <Button Content="Late Arrivals" Command="{Binding SetFilterCommand}" CommandParameter="Late" Classes="warning" />
+            <Button Content="Early Departures" Command="{Binding SetFilterCommand}" CommandParameter="EarlyDeparture" Classes="warning" />
+            <Button Content="Overtime" Command="{Binding SetFilterCommand}" CommandParameter="Overtime" Classes="primary" />
         </StackPanel>
 
         <!-- Attendance Table -->
@@ -67,11 +72,24 @@
                     </DataGridTextColumn>
                     <DataGridTextColumn Header="Check In" Binding="{Binding CheckInTime}" Width="120"/>
                     <DataGridTextColumn Header="Check Out" Binding="{Binding CheckOutTime}" Width="120"/>
-                    <DataGridTextColumn Header="Duration" Binding="{Binding WorkDuration}" Width="120"/>
-                    <DataGridTextColumn Header="Status" Binding="{Binding IsComplete}" Width="80"/>
+                    <DataGridTextColumn Header="Duration" Binding="{Binding WorkDuration}" Width="80"/>
+                    <DataGridTextColumn Header="Status" Binding="{Binding AttendanceStatus}" Width="110"/>
+                    <DataGridTextColumn Header="Late" Binding="{Binding LateMinutes}" Width="70"/>
+                    <DataGridTextColumn Header="Left Early" Binding="{Binding EarlyDepartureMinutes}" Width="70"/>
+                    <DataGridTextColumn Header="Overtime" Binding="{Binding OvertimeMinutes}" Width="70"/>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
+
+        <!-- Export Button -->
+        <Button Grid.Column="4" 
+                Command="{Binding RefreshCommand}" 
+                Content="Export" 
+                HorizontalAlignment="Right"
+                Background="#4CAF50"
+                Foreground="White"
+                Padding="15,8"
+                Margin="5,0" />
     </StackPanel>
 
     <!-- Employee display template -->
@@ -79,5 +97,6 @@
         <DataTemplate x:Key="EmployeeTemplate" DataType="model:Employee">
             <TextBlock Text="{Binding FullName}" />
         </DataTemplate>
+        <converters:AlertKindToColorConverter x:Key="AlertKindToColorConverter" />
     </UserControl.Resources>
 </UserControl> 
