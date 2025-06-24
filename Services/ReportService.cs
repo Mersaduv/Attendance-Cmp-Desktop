@@ -40,145 +40,153 @@ namespace AttandenceDesktop.Services
         public async Task<List<AttendanceReportItem>> GenerateEmployeeAttendanceReportAsync(
             int employeeId, DateTime startDate, DateTime endDate)
         {
+            // Create optimized context
             using var ctx = NewCtx();
-            var attendances = await ctx.Attendances
-                .Include(a => a.Employee)
-                .ThenInclude(e => e.Department)
-                .Where(a => a.EmployeeId == employeeId && a.Date >= startDate && a.Date <= endDate)
-                .OrderBy(a => a.Date)
-                .ToListAsync();
-                
-            var report = new List<AttendanceReportItem>();
+            
+            // Get employee data in a single query with eager loading
             var employee = await ctx.Employees
                 .Include(e => e.Department)
                 .FirstOrDefaultAsync(e => e.Id == employeeId);
             
             if (employee == null)
             {
-                return report;
+                return new List<AttendanceReportItem>();
             }
             
             // Get employee's hire date
             DateTime hireDate = employee.HireDate;
             
-            foreach (var attendance in attendances)
+            // Pre-fetch all attendance records for this employee in the date range
+            var attendances = await ctx.Attendances
+                .AsNoTracking() // Use AsNoTracking for better performance in read-only scenarios
+                .Where(a => a.EmployeeId == employeeId && a.Date >= startDate && a.Date <= endDate)
+                .OrderBy(a => a.Date)
+                .ToListAsync();
+            
+            // Pre-compute date information to avoid repeated database calls
+            var dateRange = Enumerable.Range(0, (endDate - startDate).Days + 1)
+                .Select(offset => startDate.AddDays(offset))
+                .ToList();
+            
+            // Pre-fetch holiday data for the entire date range
+            var holidays = new Dictionary<DateTime, bool>();
+            foreach (var date in dateRange)
             {
-                bool isHoliday = false;
-                bool isNonWorkingDay = false;
-                
-                // Use the flags directly from the attendance record
-                bool isLate = attendance.IsLateArrival;
-                bool isEarlyDeparture = attendance.IsEarlyDeparture;
-                bool isOvertime = attendance.OvertimeMinutes.HasValue && attendance.OvertimeMinutes.Value.TotalMinutes > 0;
-                
-                // Check if the day is a holiday or non-working day
-                isHoliday = !await _workCalendarService.IsWorkingDateAsync(attendance.Date);
-                
-                // Check if the day is a working day for this employee's schedule
-                var isWorkingDay = await _workScheduleService.IsWorkingDayForEmployeeAsync(employeeId, attendance.Date);
-                if (!isWorkingDay)
+                holidays[date.Date] = !await _workCalendarService.IsWorkingDateAsync(date);
+            }
+            
+            // Pre-fetch working day information for this employee's schedule
+            var workingDays = new Dictionary<DateTime, bool>();
+            foreach (var date in dateRange)
+            {
+                workingDays[date.Date] = await _workScheduleService.IsWorkingDayForEmployeeAsync(employeeId, date);
+            }
+            
+            // Build the report using the pre-fetched data
+            var report = new List<AttendanceReportItem>();
+            var today = DateTime.Today;
+            var attendanceDict = attendances.ToDictionary(a => a.Date.Date);
+            
+            foreach (var date in dateRange)
+            {
+                // Skip dates before hire date
+                if (date.Date < hireDate.Date)
                 {
-                    isNonWorkingDay = true;
+                    continue;
                 }
                 
-                // Determine the status based on attendance flags
-                string status;
-                if (!attendance.IsComplete)
+                AttendanceReportItem reportItem;
+                
+                // Check if we have an attendance record for this date
+                if (attendanceDict.TryGetValue(date.Date, out var attendance))
                 {
-                    status = "Incomplete";
-                }
-                else if (isLate && isEarlyDeparture)
-                {
-                    status = "Late & Left Early";
-                }
-                else if (isLate)
-                {
-                    // Check if this is a half-day attendance rather than just late arrival
-                    var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, attendance.Date);
-                    var halfDayHours = expectedWorkHours / 2.0;
+                    bool isHoliday = holidays[date.Date];
+                    bool isNonWorkingDay = !workingDays[date.Date];
+                    bool isLate = attendance.IsLateArrival;
+                    bool isEarlyDeparture = attendance.IsEarlyDeparture;
+                    bool isOvertime = attendance.OvertimeMinutes.HasValue && attendance.OvertimeMinutes.Value.TotalMinutes > 0;
                     
-                    if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                    // Determine the status based on attendance flags
+                    string status;
+                    if (!attendance.IsComplete)
                     {
-                        status = "Half Day";
+                        status = "Incomplete";
+                    }
+                    else if (isLate && isEarlyDeparture)
+                    {
+                        status = "Late & Left Early";
+                    }
+                    else if (isLate)
+                    {
+                        // Check if this is a half-day attendance rather than just late arrival
+                        var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, date);
+                        var halfDayHours = expectedWorkHours / 2.0;
+                        
+                        if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                        {
+                            status = "Half Day";
+                        }
+                        else
+                        {
+                            status = "Late Arrival";
+                        }
+                    }
+                    else if (isEarlyDeparture)
+                    {
+                        // Also check if early departure is actually a half day
+                        var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, date);
+                        var halfDayHours = expectedWorkHours / 2.0;
+                        
+                        if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                        {
+                            status = "Half Day";
+                        }
+                        else
+                        {
+                            status = "Early Departure";
+                        }
+                    }
+                    else if (attendance.IsEarlyArrival)
+                    {
+                        status = "Early Arrival";
+                    }
+                    else if (isOvertime)
+                    {
+                        status = "Overtime";
                     }
                     else
                     {
-                        status = "Late Arrival";
+                        status = "Present";
                     }
-                }
-                else if (isEarlyDeparture)
-                {
-                    // Also check if early departure is actually a half day
-                    var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, attendance.Date);
-                    var halfDayHours = expectedWorkHours / 2.0;
                     
-                    if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                    reportItem = new AttendanceReportItem
                     {
-                        status = "Half Day";
-                    }
-                    else
-                    {
-                        status = "Early Departure";
-                    }
-                }
-                else if (attendance.IsEarlyArrival)
-                {
-                    status = "Early Arrival";
-                }
-                else if (isOvertime)
-                {
-                    status = "Overtime";
+                        Date = date,
+                        EmployeeId = employeeId,
+                        EmployeeName = employee.FullName,
+                        DepartmentName = employee.Department?.Name,
+                        CheckInTime = attendance.CheckInTime,
+                        CheckOutTime = attendance.CheckOutTime,
+                        WorkDuration = attendance.WorkDuration,
+                        Status = status,
+                        IsLate = isLate,
+                        IsEarlyDeparture = isEarlyDeparture,
+                        IsHoliday = isHoliday,
+                        IsNonWorkingDay = isNonWorkingDay,
+                        IsOvertime = isOvertime,
+                        IsEarlyArrival = attendance.IsEarlyArrival,
+                        Notes = attendance.Notes,
+                        LateMinutes = attendance.LateMinutes,
+                        EarlyDepartureMinutes = attendance.EarlyDepartureMinutes,
+                        OvertimeMinutes = attendance.OvertimeMinutes,
+                        EarlyArrivalMinutes = attendance.EarlyArrivalMinutes
+                    };
                 }
                 else
                 {
-                    status = "Present";
-                }
-                
-                report.Add(new AttendanceReportItem
-                {
-                    Date = attendance.Date,
-                    EmployeeId = employeeId,
-                    EmployeeName = attendance.Employee.FullName,
-                    DepartmentName = attendance.Employee.Department?.Name,
-                    CheckInTime = attendance.CheckInTime,
-                    CheckOutTime = attendance.CheckOutTime,
-                    WorkDuration = attendance.WorkDuration,
-                    Status = status,
-                    IsLate = isLate,
-                    IsEarlyDeparture = isEarlyDeparture,
-                    IsHoliday = isHoliday,
-                    IsNonWorkingDay = isNonWorkingDay,
-                    IsOvertime = isOvertime,
-                    IsEarlyArrival = attendance.IsEarlyArrival,
-                    Notes = attendance.Notes,
-                    LateMinutes = attendance.LateMinutes,
-                    EarlyDepartureMinutes = attendance.EarlyDepartureMinutes,
-                    OvertimeMinutes = attendance.OvertimeMinutes,
-                    EarlyArrivalMinutes = attendance.EarlyArrivalMinutes
-                });
-            }
-            
-            // Fill in missing dates in the range
-            var currentDate = startDate;
-            var today = DateTime.Today;
-            while (currentDate <= endDate)
-            {
-                if (!report.Any(r => r.Date.Date == currentDate.Date))
-                {
-                    // Check if the date is before employee's hire date
-                    if (currentDate.Date < hireDate.Date)
-                    {
-                        // Skip dates before hire date - don't add them to the report
-                        currentDate = currentDate.AddDays(1);
-                        continue;
-                    }
-                    
-                    // Check if the day is a holiday or non-working day
-                    var isHoliday = !await _workCalendarService.IsWorkingDateAsync(currentDate);
-                    
-                    // Check if the day is a working day for this employee's schedule
-                    var isWorkingDay = await _workScheduleService.IsWorkingDayForEmployeeAsync(employeeId, currentDate);
-                    var isNonWorkingDay = !isWorkingDay;
+                    // No attendance record found, generate a default record
+                    bool isHoliday = holidays[date.Date];
+                    bool isNonWorkingDay = !workingDays[date.Date];
                     
                     var status = "Absent";
                     if (isHoliday)
@@ -189,30 +197,31 @@ namespace AttandenceDesktop.Services
                     {
                         status = "Non-Working Day";
                     }
-                    else if (currentDate.Date > today)
+                    else if (date.Date > today)
                     {
                         // Don't mark future dates as "Absent"
                         status = "Scheduled";
                     }
                     
-                    report.Add(new AttendanceReportItem
+                    reportItem = new AttendanceReportItem
                     {
-                        Date = currentDate,
+                        Date = date,
                         EmployeeId = employeeId,
-                        EmployeeName = employee?.FullName,
-                        DepartmentName = employee?.Department?.Name,
+                        EmployeeName = employee.FullName,
+                        DepartmentName = employee.Department?.Name,
                         CheckInTime = null,
                         CheckOutTime = null,
                         WorkDuration = null,
                         Status = status,
                         IsHoliday = isHoliday,
                         IsNonWorkingDay = isNonWorkingDay
-                    });
+                    };
                 }
-                currentDate = currentDate.AddDays(1);
+                
+                report.Add(reportItem);
             }
             
-            return report.OrderBy(r => r.Date).ToList();
+            return report;
         }
         
         public async Task<List<AttendanceReportItem>> GenerateDepartmentAttendanceReportAsync(

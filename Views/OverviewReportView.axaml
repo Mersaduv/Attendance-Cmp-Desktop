@@ -61,59 +61,91 @@
                               Margin="10"
                               HorizontalAlignment="Center" />
                     
-                    <ScrollViewer Grid.Row="1" Margin="10,5,10,10">
-                        <ItemsControl ItemsSource="{Binding DepartmentTree}" x:Name="DepartmentTreeView">
+                    <ScrollViewer Grid.Row="1" Margin="10,0,10,10" 
+                                  VerticalScrollBarVisibility="Auto" 
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding DepartmentTree}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid RowDefinitions="Auto,Auto">
-                                        <!-- Department row with expand/collapse button -->
-                                        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*" Margin="0,5">
-                                            <!-- Expand/Collapse button -->
-                                            <ToggleButton Grid.Column="0" 
-                                                         IsChecked="{Binding IsExpanded}" 
-                                                         Width="22" 
-                                                         Height="22"
-                                                         Content="{Binding IsExpanded, Converter={StaticResource StringEqualsConverter}, ConverterParameter='true', FallbackValue='+'}"
-                                                         Margin="0,0,5,0" 
-                                                         HorizontalContentAlignment="Center"
-                                                         VerticalContentAlignment="Center"
-                                                         Background="#E3F2FD"
-                                                         Padding="0"
-                                                         BorderThickness="1"
-                                                         BorderBrush="#1976D2" />
-                                            
-                                            <!-- Department checkbox -->
-                                            <CheckBox Grid.Column="1" 
-                                                     IsChecked="{Binding IsChecked}"
-                                                     Margin="5,0" />
-                                            
-                                            <!-- Department name -->
-                                            <TextBlock Grid.Column="2" 
-                                                      Text="{Binding Name}"
-                                                      FontWeight="SemiBold"
-                                                      Foreground="#1976D2"
-                                                      VerticalAlignment="Center" />
+                                    <StackPanel Margin="0,3,0,3">
+                                        <!-- Department Header -->
+                                        <Grid Margin="0,2,0,2">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <!-- Department checkbox -->
+                                                <Border Width="22" Height="22" 
+                                                        Background="#2196F3" 
+                                                        CornerRadius="2"
+                                                        Margin="0,0,8,0">
+                                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                              BorderThickness="0"
+                                                              Background="Transparent" 
+                                                              Foreground="White"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"
+                                                              Checked="OnDepartmentChecked"
+                                                              Unchecked="OnDepartmentUnchecked" />
+                                                </Border>
+                                                
+                                                <!-- Department name -->
+                                                <TextBlock Text="{Binding Name}"
+                                                           Foreground="#616161"
+                                                           VerticalAlignment="Center"
+                                                           FontWeight="SemiBold" />
+                                                
+                                                <!-- Spacer -->
+                                                <Panel Width="5" />
+                                                
+                                                <!-- Toggle button for expand/collapse -->
+                                                <Border Width="22" Height="22" 
+                                                        Background="#EAEAEA" 
+                                                        CornerRadius="2">
+                                                    <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                                                  HorizontalContentAlignment="Center"
+                                                                  VerticalContentAlignment="Center"
+                                                                  BorderThickness="0"
+                                                                  Background="Transparent">
+                                                        <TextBlock Text="{Binding IsExpanded, Converter={StaticResource StringEqualsConverter}, ConverterParameter='true', FallbackValue='+'}"
+                                                                   FontSize="14"
+                                                                   FontWeight="Bold" 
+                                                                   Foreground="#333333" />
+                                                    </ToggleButton>
+                                                </Border>
+                                            </StackPanel>
                                         </Grid>
                                         
-                                        <!-- Employees List - visible only when department is expanded -->
-                                        <ItemsControl Grid.Row="1" 
-                                                    ItemsSource="{Binding Employees}" 
-                                                    IsVisible="{Binding IsExpanded}"
-                                                    Margin="30,0,0,10">
+                                        <!-- Employees List (shown when expanded) -->
+                                        <ItemsControl ItemsSource="{Binding Employees}"
+                                                      IsVisible="{Binding IsExpanded}"
+                                                      Margin="30,2,0,5">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Grid ColumnDefinitions="Auto,*" Margin="0,3">
-                                                        <CheckBox Grid.Column="0" 
-                                                                 IsChecked="{Binding IsChecked}" 
-                                                                 Margin="0,0,5,0" />
-                                                        <TextBlock Grid.Column="1" 
-                                                                 Text="{Binding Name}" 
-                                                                 VerticalAlignment="Center" />
+                                                    <Grid Margin="0,3">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <!-- Employee checkbox -->
+                                                            <Border Width="22" Height="22"
+                                                                    Background="#2196F3"
+                                                                    CornerRadius="2"
+                                                                    Margin="0,0,8,0">
+                                                                <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" 
+                                                                          BorderThickness="0"
+                                                                          Background="Transparent"
+                                                                          Foreground="White"
+                                                                          HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center"
+                                                                          Checked="OnEmployeeChecked"
+                                                                          Unchecked="OnEmployeeUnchecked" />
+                                                            </Border>
+                                                            
+                                                            <!-- Employee name -->
+                                                            <TextBlock Text="{Binding Name}"
+                                                                       Foreground="#616161"
+                                                                       VerticalAlignment="Center" />
+                                                        </StackPanel>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                    </Grid>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -128,8 +160,41 @@
                    BorderBrush="#DDDDDD"
                    CornerRadius="5"
                    BoxShadow="0 2 4 #20000000">
-                <Grid>
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" x:Name="MainScrollViewer">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <!-- Pagination controls for dates -->
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="10,5">
+                        <Button Grid.Column="0" 
+                                Command="{Binding PreviousDatePageCommand}"
+                                Content="◀ Previous" 
+                                Background="#E3F2FD"
+                                BorderBrush="#1976D2"
+                                BorderThickness="1"
+                                Padding="10,5"
+                                Margin="0,0,10,0" />
+                                
+                        <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Center">
+                            <TextBlock Text="Date Pagination" 
+                                       Foreground="#555555"
+                                       FontSize="11"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding DatePageInfo}"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                                   
+                        <Button Grid.Column="2" 
+                                Command="{Binding NextDatePageCommand}"
+                                Content="Next ▶" 
+                                Background="#E3F2FD"
+                                BorderBrush="#1976D2"
+                                BorderThickness="1"
+                                Padding="10,5"
+                                Margin="10,0,0,0" />
+                    </Grid>
+                    
+                    <!-- Main content with calendar grid -->
+                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" x:Name="MainScrollViewer">
                         <!-- Main Grid with dynamic columns based on date range -->
                         <Grid x:Name="MainGrid">
                             <Grid.RowDefinitions>
@@ -223,14 +288,53 @@
                                     </Border>
                                     <TextBlock Grid.Column="1" Text="Early Arrival" Margin="5,0,0,0" VerticalAlignment="Center" />
                                 </Grid>
+                                <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                                    <Border Width="20" Height="20" Background="#9E9E9E" CornerRadius="3">
+                                        <TextBlock Text="NH" FontSize="11" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Text="Not Hired" Margin="5,0,0,0" VerticalAlignment="Center" />
+                                </Grid>
                             </StackPanel>
                             
                             <!-- Dynamic Date Headers and Cells are created in code-behind -->
                         </Grid>
                     </ScrollViewer>
                     
+                    <!-- Pagination controls for employees -->
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="10,5">
+                        <Button Grid.Column="0" 
+                                Command="{Binding PreviousEmployeePageCommand}"
+                                Content="◀ Previous" 
+                                Background="#FFEBEE"
+                                BorderBrush="#D32F2F"
+                                BorderThickness="1"
+                                Padding="10,5"
+                                Margin="0,0,10,0" />
+                                
+                        <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Center">
+                            <TextBlock Text="Employee Pagination" 
+                                       Foreground="#555555"
+                                       FontSize="11"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding EmployeePageInfo}"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                                   
+                        <Button Grid.Column="2" 
+                                Command="{Binding NextEmployeePageCommand}"
+                                Content="Next ▶" 
+                                Background="#FFEBEE"
+                                BorderBrush="#D32F2F"
+                                BorderThickness="1"
+                                Padding="10,5"
+                                Margin="10,0,0,0" />
+                    </Grid>
+                    
                     <!-- Empty state message -->
-                    <StackPanel VerticalAlignment="Center" 
+                    <StackPanel Grid.Row="1" 
+                              VerticalAlignment="Center" 
                               HorizontalAlignment="Center"
                               IsVisible="{Binding !SelectedEmployeeIds.Count}">
                         <TextBlock Text="No employees selected" 
@@ -249,10 +353,42 @@
         
         <!-- Loading Overlay -->
         <Grid Grid.RowSpan="2" Background="#80000000" IsVisible="{Binding IsLoading}">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                <ProgressBar IsIndeterminate="True" Width="100" Height="4" />
-                <TextBlock Text="Loading..." Foreground="White" Margin="0,10,0,0" />
-            </StackPanel>
+            <Border Background="#FFFFFF" Width="350" Height="160" CornerRadius="8" BoxShadow="0 4 8 #40000000">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" 
+                             Text="Generating Report" 
+                             FontWeight="Bold" 
+                             FontSize="16" 
+                             Margin="0,10,0,5"
+                             HorizontalAlignment="Center" />
+                             
+                    <TextBlock Grid.Row="1"
+                             Text="{Binding ProgressStatus}"
+                             Margin="20,5"
+                             HorizontalAlignment="Center" />
+                    
+                    <TextBlock Grid.Row="2" 
+                             Text="Please wait while loading data..."
+                             Margin="20,0,20,5"
+                             FontSize="12"
+                             Foreground="#757575"
+                             HorizontalAlignment="Center" />
+                             
+                    <Grid Grid.Row="3" Margin="20,5">
+                        <ProgressBar Value="{Binding ProgressPercentage}" Height="8" />
+                        <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:F1}%'}"
+                                 HorizontalAlignment="Center"
+                                 Margin="0,15,0,0" />
+                    </Grid>
+                    
+                    <Button Grid.Row="4" 
+                          Content="Cancel" 
+                          Command="{Binding CancelReportCommand}"
+                          HorizontalAlignment="Center"
+                          Margin="0,10"
+                          Padding="20,5" />
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </UserControl> 
