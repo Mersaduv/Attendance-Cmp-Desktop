@@ -58,25 +58,158 @@
             <DataGrid ItemsSource="{Binding FilteredAttendance}" 
                       AutoGenerateColumns="False" 
                       IsReadOnly="True"
-                      Height="400">
+                      Height="400"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      GridLinesVisibility="All"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      RowBackground="White"
+                      HorizontalAlignment="Stretch">
+                <DataGrid.Styles>
+                    <Style Selector="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#E3F2FD" />
+                        <Setter Property="FontWeight" Value="Bold" />
+                        <Setter Property="Padding" Value="8" />
+                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                    </Style>
+                    <Style Selector="DataGridCell">
+                        <Setter Property="Padding" Value="8" />
+                        <Setter Property="MinHeight" Value="30" />
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                    </Style>
+                    <Style Selector="DataGridRow:nth-child(odd)">
+                        <Setter Property="Background" Value="White" />
+                        <Setter Property="MinHeight" Value="35" />
+                    </Style>
+                    <Style Selector="DataGridRow:nth-child(even)">
+                        <Setter Property="Background" Value="#F5F5F5" />
+                        <Setter Property="MinHeight" Value="35" />
+                    </Style>
+                </DataGrid.Styles>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Employee" Width="*">
-                        <DataGridTextColumn.Binding>
-                            <avalonia:Binding Path="Employee.FullName"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Department" Width="*">
-                        <DataGridTextColumn.Binding>
-                            <avalonia:Binding Path="Employee.Department.Name"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Check In" Binding="{Binding CheckInTime}" Width="120"/>
-                    <DataGridTextColumn Header="Check Out" Binding="{Binding CheckOutTime}" Width="120"/>
-                    <DataGridTextColumn Header="Duration" Binding="{Binding WorkDuration}" Width="80"/>
-                    <DataGridTextColumn Header="Status" Binding="{Binding AttendanceStatus}" Width="110"/>
-                    <DataGridTextColumn Header="Late" Binding="{Binding LateMinutes}" Width="70"/>
-                    <DataGridTextColumn Header="Left Early" Binding="{Binding EarlyDepartureMinutes}" Width="70"/>
-                    <DataGridTextColumn Header="Overtime" Binding="{Binding OvertimeMinutes}" Width="70"/>
+                    <DataGridTemplateColumn Header="Employee" Width="150">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Employee.FullName}" 
+                                           Margin="5,0"
+                                           FontWeight="Medium"
+                                           VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Department" Width="140">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Employee.Department.Name}" 
+                                           Foreground="#1976D2" 
+                                           FontWeight="SemiBold"
+                                           Margin="5,0"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Date" Width="130">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Background="#F5F8FA" 
+                                        CornerRadius="4"
+                                        Padding="8,4"
+                                        HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding Date, StringFormat={}{0:yyyy/MM/dd}}" 
+                                           FontWeight="SemiBold"
+                                           FontSize="14"
+                                           Foreground="#37474F"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Check In" Width="110">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding CheckInTime, StringFormat={}{0:HH:mm:ss}, TargetNullValue='-'}" 
+                                           Margin="5,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Check Out" Width="110">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding CheckOutTime, StringFormat={}{0:HH:mm:ss}, TargetNullValue='-'}" 
+                                           Margin="5,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Duration" Width="100">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding WorkDuration, StringFormat={}{0:hh\\:mm\\:ss}, TargetNullValue='-'}" 
+                                           Margin="5,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="Medium" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Status" Width="130">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding AttendanceStatus, Converter={StaticResource StatusToBgConverter}, FallbackValue=Transparent}"
+                                        CornerRadius="4"
+                                        Padding="8,4">
+                                    <TextBlock Text="{Binding AttendanceStatus}" 
+                                               Foreground="{Binding AttendanceStatus, Converter={StaticResource StatusToFgConverter}, FallbackValue=Black}"
+                                               TextWrapping="Wrap"
+                                               FontWeight="SemiBold"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Late" Width="90">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding LateMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" 
+                                               Foreground="#D32F2F"
+                                               FontWeight="Bold"
+                                               FontSize="14" />
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Left Early" Width="90">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding EarlyDepartureMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" 
+                                               Foreground="#FF9800"
+                                               FontWeight="Bold"
+                                               FontSize="14" />
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Overtime" Width="90">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding OvertimeMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" 
+                                               Foreground="#4CAF50"
+                                               FontWeight="Bold"
+                                               FontSize="14" />
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
@@ -98,5 +231,7 @@
             <TextBlock Text="{Binding FullName}" />
         </DataTemplate>
         <converters:AlertKindToColorConverter x:Key="AlertKindToColorConverter" />
+        <converters:StatusToBgConverter x:Key="StatusToBgConverter" />
+        <converters:StatusToFgConverter x:Key="StatusToFgConverter" />
     </UserControl.Resources>
 </UserControl> 

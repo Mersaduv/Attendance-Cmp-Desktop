@@ -41,6 +41,15 @@ namespace AttandenceDesktop.Models
         [Required(ErrorMessage = "Hire Date is required")]
         public DateTime HireDate { get; set; }
         
+        // Flag to indicate if this employee has flexible working hours
+        // When true, the employee is only evaluated on total hours worked, not when they work
+        // This overrides any fixed schedule settings from the WorkSchedule
+        public bool IsFlexibleHours { get; set; } = false;
+        
+        // Required work hours per day (used when IsFlexibleHours is true)
+        // This defines how many hours the employee must work each day, regardless of when they work
+        public double RequiredWorkHoursPerDay { get; set; } = 8.0;
+        
         [NotMapped]
         public string FullName => $"{FirstName} {LastName}";
     }

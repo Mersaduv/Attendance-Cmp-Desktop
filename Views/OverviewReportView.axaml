@@ -25,12 +25,6 @@
                     <CalendarDatePicker SelectedDate="{Binding EndDate}" Width="150" VerticalAlignment="Center" />
                 </StackPanel>
                 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="Select departments and employees from the side panel" 
-                               FontStyle="Italic"
-                               VerticalAlignment="Center" />
-                </StackPanel>
-                
                 <!-- Generate Button -->
                 <StackPanel Grid.Column="2" Margin="5" VerticalAlignment="Center">
                     <Button Command="{Binding GenerateReportCommand}" 
@@ -45,7 +39,7 @@
         
         <!-- Report Content -->
         <Grid Grid.Row="1" ColumnDefinitions="300,*">
-            <!-- Department Tree View (Left Side) -->
+            <!-- Simple Panel with All Button (Left Side) -->
             <Border Grid.Column="0" 
                     Background="White"
                     BorderThickness="1"
@@ -54,101 +48,56 @@
                     BoxShadow="0 2 4 #20000000"
                     Margin="0,0,10,0">
                 <Grid RowDefinitions="Auto,*">
-                    <TextBlock Grid.Row="0"
-                              Text="Departments &amp; Employees"
-                              FontWeight="Bold"
-                              FontSize="16"
-                              Margin="10"
-                              HorizontalAlignment="Center" />
-                    
-                    <ScrollViewer Grid.Row="1" Margin="10,0,10,10" 
-                                  VerticalScrollBarVisibility="Auto" 
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{Binding DepartmentTree}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="0,3,0,3">
-                                        <!-- Department Header -->
-                                        <Grid Margin="0,2,0,2">
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <!-- Department checkbox -->
-                                                <Border Width="22" Height="22" 
-                                                        Background="#2196F3" 
-                                                        CornerRadius="2"
-                                                        Margin="0,0,8,0">
-                                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
-                                                              BorderThickness="0"
-                                                              Background="Transparent" 
-                                                              Foreground="White"
-                                                              HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"
-                                                              Checked="OnDepartmentChecked"
-                                                              Unchecked="OnDepartmentUnchecked" />
-                                                </Border>
-                                                
-                                                <!-- Department name -->
-                                                <TextBlock Text="{Binding Name}"
-                                                           Foreground="#616161"
-                                                           VerticalAlignment="Center"
-                                                           FontWeight="SemiBold" />
-                                                
-                                                <!-- Spacer -->
-                                                <Panel Width="5" />
-                                                
-                                                <!-- Toggle button for expand/collapse -->
-                                                <Border Width="22" Height="22" 
-                                                        Background="#EAEAEA" 
-                                                        CornerRadius="2">
-                                                    <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}"
-                                                                  HorizontalContentAlignment="Center"
-                                                                  VerticalContentAlignment="Center"
-                                                                  BorderThickness="0"
-                                                                  Background="Transparent">
-                                                        <TextBlock Text="{Binding IsExpanded, Converter={StaticResource StringEqualsConverter}, ConverterParameter='true', FallbackValue='+'}"
-                                                                   FontSize="14"
-                                                                   FontWeight="Bold" 
-                                                                   Foreground="#333333" />
-                                                    </ToggleButton>
-                                                </Border>
-                                            </StackPanel>
-                                        </Grid>
-                                        
-                                        <!-- Employees List (shown when expanded) -->
-                                        <ItemsControl ItemsSource="{Binding Employees}"
-                                                      IsVisible="{Binding IsExpanded}"
-                                                      Margin="30,2,0,5">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid Margin="0,3">
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <!-- Employee checkbox -->
-                                                            <Border Width="22" Height="22"
-                                                                    Background="#2196F3"
-                                                                    CornerRadius="2"
-                                                                    Margin="0,0,8,0">
-                                                                <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" 
-                                                                          BorderThickness="0"
-                                                                          Background="Transparent"
-                                                                          Foreground="White"
-                                                                          HorizontalAlignment="Center"
-                                                                          VerticalAlignment="Center"
-                                                                          Checked="OnEmployeeChecked"
-                                                                          Unchecked="OnEmployeeUnchecked" />
-                                                            </Border>
-                                                            
-                                                            <!-- Employee name -->
-                                                            <TextBlock Text="{Binding Name}"
-                                                                       Foreground="#616161"
-                                                                       VerticalAlignment="Center" />
-                                                        </StackPanel>
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                    <!-- Header -->
+                    <Border Grid.Row="0" 
+                           Background="#F5F5F5" 
+                           BorderBrush="#DDDDDD"
+                           BorderThickness="0,0,0,1"
+                           Padding="10,8">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <CheckBox x:Name="SelectAllCheckBox" 
+                                     Content="All" 
+                                     Checked="OnSelectAllChecked" 
+                                     Unchecked="OnSelectAllUnchecked"
+                                     FontWeight="SemiBold" />
+                            
+                            <TextBlock Grid.Column="1"
+                                      Text="Departments &amp; Employees" 
+                                      HorizontalAlignment="Right"
+                                      VerticalAlignment="Center"
+                                      Foreground="#555555"
+                                      FontSize="12" />
+                        </Grid>
+                    </Border>
+
+                    <!-- TreeView with departments and employees -->
+                    <ScrollViewer Grid.Row="1" Margin="0" VerticalScrollBarVisibility="Auto">
+                        <TreeView ItemsSource="{Binding DepartmentTree}" Margin="5,5,0,0">
+                            <TreeView.Styles>
+                                <Style Selector="TreeViewItem">
+                                    <Setter Property="Padding" Value="4,2" />
+                                </Style>
+                            </TreeView.Styles>
+                            <TreeView.DataTemplates>
+                                <!-- Department node template -->
+                                <TreeDataTemplate DataType="vm:DepartmentTreeNode" ItemsSource="{Binding Employees}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" Margin="0,0,5,0"/>
+                                        <TextBlock Text="{Binding Name}" 
+                                                  VerticalAlignment="Center"
+                                                  FontWeight="SemiBold"/>
                                     </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                </TreeDataTemplate>
+
+                                <!-- Employee node template -->
+                                <TreeDataTemplate DataType="vm:EmployeeTreeNode">
+                                    <StackPanel Orientation="Horizontal">
+                                        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" Margin="0,0,5,0"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </TreeDataTemplate>
+                            </TreeView.DataTemplates>
+                        </TreeView>
                     </ScrollViewer>
                 </Grid>
             </Border>
@@ -340,11 +289,6 @@
                         <TextBlock Text="No employees selected" 
                                  FontSize="18" 
                                  Foreground="#757575"
-                                 HorizontalAlignment="Center" />
-                        <TextBlock Text="Please select employees from the side panel and click 'Generate Report'" 
-                                 FontSize="14" 
-                                 Foreground="#757575"
-                                 Margin="0,10,0,0"
                                  HorizontalAlignment="Center" />
                     </StackPanel>
                 </Grid>

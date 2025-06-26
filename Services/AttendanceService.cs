@@ -105,105 +105,93 @@ namespace AttandenceDesktop.Services
             {
                 // Get employee info for logging
                 string employeeName = "Unknown";
+                Department employeeDepartment = null;
+                Employee employee = null;
+                bool isFlexibleHours = false;
+                double requiredWorkHours = 8.0;
+                
                 using (var empCtx = NewCtx())
                 {
-                    var emp = await empCtx.Employees
+                    employee = await empCtx.Employees
                         .Include(e => e.Department)
+                        .Include(e => e.WorkSchedule)
                         .FirstOrDefaultAsync(e => e.Id == employeeId);
-                    if (emp != null)
+                        
+                    if (employee != null)
                     {
-                        employeeName = $"{emp.FirstName} {emp.LastName}";
-                        Trace.WriteLine($"[Attendance Check-In] Employee info - Name: {employeeName}, Department: {emp.Department?.Name ?? "None"}");
+                        employeeName = $"{employee.FirstName} {employee.LastName}";
+                        employeeDepartment = employee.Department;
+                        isFlexibleHours = employee.IsFlexibleHours;
+                        requiredWorkHours = employee.RequiredWorkHoursPerDay;
+                        Trace.WriteLine($"[Attendance Check-In] Employee info - Name: {employeeName}, Department: {employeeDepartment?.Name ?? "None"}, Flexible Hours: {isFlexibleHours}");
                     }
                 }
                 
+                // Check if current date is past their hire date
                 var attendance = await GetByEmployeeAndDateAsync(employeeId, today);
+                
+                bool isRemoteWorker = employeeDepartment?.Name?.Contains("دورکار") == true;
+                bool isNightShift = false;
                 
                 // Get the employee's work schedule for time calculations
                 var schedule = await WorkScheduleService.GetEmployeeWorkScheduleAsync(employeeId);
-                if (schedule == null)
+                
+                // Check for night shift schedule (if start time is later than end time, it's likely a night shift)
+                if (schedule != null && !schedule.IsFlexibleSchedule && !isFlexibleHours)
                 {
-                    Trace.WriteLine($"[Attendance Check-In] WARNING - No work schedule found for employee {employeeId} ({employeeName})");
+                    isNightShift = schedule.StartTime.Hours > schedule.EndTime.Hours;
+                    Trace.WriteLine($"[Attendance Check-In] Schedule analysis - Is night shift: {isNightShift}");
                 }
-                else 
+                
+                // For night shifts that cross midnight, we might need to adjust "today" for attendance purposes
+                DateTime attendanceDate = today;
+                
+                // If it's early morning (before 6 AM) and this employee is on night shift,
+                // we might want to count this as part of the previous day's shift
+                if (isNightShift && now.Hour < 6 && now.Hour >= 0)
                 {
-                    Trace.WriteLine($"[Attendance Check-In] Found schedule: {schedule.Name}, Start: {schedule.StartTime}, End: {schedule.EndTime}");
+                    attendanceDate = today.AddDays(-1);
+                    Trace.WriteLine($"[Attendance Check-In] Night shift detection - Using previous day ({attendanceDate.ToShortDateString()}) for attendance record");
+                    
+                    // Re-check attendance record with adjusted date
+                    attendance = await GetByEmployeeAndDateAsync(employeeId, attendanceDate);
                 }
                 
                 if (attendance == null)
                 {
-                    Trace.WriteLine($"[Attendance Check-In] Creating new attendance record for employee ID: {employeeId} ({employeeName})");
-                    
-                    // Create new attendance record
+                    // No existing attendance record for today
+                    // Create a new attendance record
                     attendance = new Attendance
                     {
                         EmployeeId = employeeId,
-                        Date = today,
+                        Date = attendanceDate,
                         CheckInTime = now,
-                        Notes = ""
+                        Notes = "",
+                        IsComplete = false,
+                        IsLateArrival = false
                     };
                     
-                    // Check if the employee is late
-                    if (schedule != null && schedule.IsWorkingDay(today.DayOfWeek))
+                    // Check if the employee is late or early based on schedule
+                    if (schedule != null && schedule.IsWorkingDay(attendanceDate.DayOfWeek))
                     {
-                        // Calculate expected start time
-                        var expectedStartTime = new DateTime(
-                            today.Year, today.Month, today.Day,
-                            schedule.StartTime.Hours, schedule.StartTime.Minutes, 0
-                        );
+                        // Override schedule flexibility with employee setting
+                        bool isFlexible = isFlexibleHours || schedule.IsFlexibleSchedule;
                         
-                        // Apply flex time allowance
-                        var latestAllowedTime = expectedStartTime.AddMinutes(schedule.FlexTimeAllowanceMinutes);
+                        // Get expected work hours for the employee on this day
+                        double expectedWorkHours = isFlexibleHours 
+                            ? requiredWorkHours 
+                            : schedule.CalculateExpectedWorkHours(attendanceDate);
                         
-                        Trace.WriteLine($"[Attendance Check-In] Schedule details - Expected start: {expectedStartTime:HH:mm:ss}, Latest allowed: {latestAllowedTime:HH:mm:ss}");
+                        // Store the schedule type information
+                        attendance.IsFlexibleSchedule = isFlexible;
+                        attendance.ExpectedWorkHours = expectedWorkHours;
                         
-                        if (now > latestAllowedTime)
-                        {
-                            attendance.IsLateArrival = true;
-                            attendance.LateMinutes = now - expectedStartTime; // Calculate from expected time, not grace period
-                            Trace.WriteLine($"[Attendance Check-In] LATE - Employee ID: {employeeId} ({employeeName}) is late by {attendance.LateMinutes.Value.TotalMinutes:F0} minutes");
-                        }
-                        else if (now < expectedStartTime)
-                        {
-                            attendance.IsEarlyArrival = true;
-                            attendance.EarlyArrivalMinutes = expectedStartTime - now;
-                            Trace.WriteLine($"[Attendance Check-In] EARLY ARRIVAL - Employee ID: {employeeId} ({employeeName}) arrived early by {attendance.EarlyArrivalMinutes.Value.TotalMinutes:F0} minutes");
-                        }
-                        else
-                        {
-                            Trace.WriteLine($"[Attendance Check-In] ON TIME - Employee ID: {employeeId} ({employeeName}) arrived on time");
-                        }
-                    }
-                    else if (schedule != null)
-                    {
-                        Trace.WriteLine($"[Attendance Check-In] Today ({today.DayOfWeek}) is not a working day according to schedule");
-                    }
-                    
-                    using var addCtx = NewCtx();
-                    addCtx.Attendances.Add(attendance);
-                    await addCtx.SaveChangesAsync();
-                    
-                    // Notify that attendance data has changed
-                    _dataRefreshService.NotifyAttendanceChanged();
-                    Trace.WriteLine($"[Attendance Check-In] Success - Created attendance record ID: {attendance.Id} for employee ID: {employeeId} ({employeeName})");
-                }
-                else if (!attendance.CheckInTime.HasValue)
-                {
-                    Trace.WriteLine($"[Attendance Check-In] Updating existing attendance record ID: {attendance.Id} for employee ID: {employeeId} ({employeeName})");
-                    
-                    // Find the existing entity to update it
-                    using var updateCtx = NewCtx();
-                    var existingAttendance = await updateCtx.Attendances.FindAsync(attendance.Id);
-                    if (existingAttendance != null)
-                    {
-                        existingAttendance.CheckInTime = now;
-                        
-                        // Check if the employee is late
-                        if (schedule != null && schedule.IsWorkingDay(today.DayOfWeek))
+                        // For fixed schedules with defined start/end times
+                        if (!isFlexible)
                         {
                             // Calculate expected start time
                             var expectedStartTime = new DateTime(
-                                today.Year, today.Month, today.Day,
+                                attendanceDate.Year, attendanceDate.Month, attendanceDate.Day,
                                 schedule.StartTime.Hours, schedule.StartTime.Minutes, 0
                             );
                             
@@ -212,48 +200,137 @@ namespace AttandenceDesktop.Services
                             
                             Trace.WriteLine($"[Attendance Check-In] Schedule details - Expected start: {expectedStartTime:HH:mm:ss}, Latest allowed: {latestAllowedTime:HH:mm:ss}");
                             
+                            // For night shifts, handle the special case if check-in is on the right day
+                            if (isNightShift && attendanceDate == today)
+                            {
+                                Trace.WriteLine($"[Attendance Check-In] Night shift - checking against evening start time");
+                            }
+                            
+                            // Check for late arrival
                             if (now > latestAllowedTime)
                             {
-                                existingAttendance.IsLateArrival = true;
-                                existingAttendance.LateMinutes = now - expectedStartTime; // Calculate from expected time, not grace period
-                                Trace.WriteLine($"[Attendance Check-In] LATE - Employee ID: {employeeId} ({employeeName}) is late by {existingAttendance.LateMinutes.Value.TotalMinutes:F0} minutes");
+                                attendance.IsLateArrival = true;
+                                attendance.LateMinutes = now - expectedStartTime; // Calculate from expected time, not grace period
+                                attendance.AttendanceCode = "L"; // L for Late
+                                Trace.WriteLine($"[Attendance Check-In] Employee is late by {attendance.LateMinutes.Value.TotalMinutes:0.##} minutes");
                             }
                             else if (now < expectedStartTime)
                             {
-                                existingAttendance.IsEarlyArrival = true;
-                                existingAttendance.EarlyArrivalMinutes = expectedStartTime - now;
-                                Trace.WriteLine($"[Attendance Check-In] EARLY ARRIVAL - Employee ID: {employeeId} ({employeeName}) arrived early by {existingAttendance.EarlyArrivalMinutes.Value.TotalMinutes:F0} minutes");
+                                attendance.IsEarlyArrival = true;
+                                attendance.EarlyArrivalMinutes = expectedStartTime - now;
+                                attendance.AttendanceCode = "EA"; // EA for Early Arrival
+                                Trace.WriteLine($"[Attendance Check-In] Employee arrived early by {attendance.EarlyArrivalMinutes.Value.TotalMinutes:0.##} minutes");
                             }
                             else
                             {
-                                Trace.WriteLine($"[Attendance Check-In] ON TIME - Employee ID: {employeeId} ({employeeName}) arrived on time");
+                                attendance.AttendanceCode = "P"; // P for Present
+                                Trace.WriteLine($"[Attendance Check-In] Employee arrived on time");
                             }
                         }
-                        else if (schedule != null)
+                        else
                         {
-                            Trace.WriteLine($"[Attendance Check-In] Today ({today.DayOfWeek}) is not a working day according to schedule");
+                            // For flexible schedules, just record check-in without lateness flags
+                            attendance.AttendanceCode = "P"; // P for Present
+                            Trace.WriteLine($"[Attendance Check-In] Flexible schedule - no late/early check");
                         }
-                        
-                        await updateCtx.SaveChangesAsync();
-                        
-                        // Notify that attendance data has changed
-                        _dataRefreshService.NotifyAttendanceChanged();
-                        Trace.WriteLine($"[Attendance Check-In] Success - Updated attendance record ID: {attendance.Id} for employee ID: {employeeId} ({employeeName})");
                     }
+                    
+                    using var ctx = NewCtx();
+                    ctx.Attendances.Add(attendance);
+                    await ctx.SaveChangesAsync();
+                    
+                    // Notify that attendance records have changed
+                    _dataRefreshService.NotifyAttendanceChanged();
+                    
+                    Trace.WriteLine($"[Attendance Check-In] Success - Created new attendance record with ID: {attendance.Id}");
+                    return attendance;
                 }
                 else
                 {
-                    Trace.WriteLine($"[Attendance Check-In] WARNING - Employee ID: {employeeId} ({employeeName}) already checked in at {attendance.CheckInTime.Value}");
+                    // Attendance record for today already exists
+                    if (attendance.IsComplete)
+                    {
+                        // Record is already completed with check-out - can't check in again
+                        Trace.WriteLine($"[Attendance Check-In] Warning - Attendance record is already complete for today");
+                        throw new InvalidOperationException("Attendance record for today is already completed.");
+                    }
+                    
+                    if (attendance.CheckInTime.HasValue)
+                    {
+                        // Already checked in
+                        Trace.WriteLine($"[Attendance Check-In] Warning - Already checked in at {attendance.CheckInTime.Value:HH:mm:ss}");
+                        throw new InvalidOperationException($"Already checked in at {attendance.CheckInTime.Value:HH:mm:ss}");
+                    }
+                    
+                    // Otherwise, update the check-in time
+                    attendance.CheckInTime = now;
+                    
+                    // Similar logic as before for checking if late/early (adjusted for employee's flexible setting)
+                    // Get the employee's work schedule if not already loaded
+                    if (schedule == null)
+                    {
+                        schedule = await WorkScheduleService.GetEmployeeWorkScheduleAsync(employeeId);
+                    }
+                    
+                    if (schedule != null && schedule.IsWorkingDay(attendanceDate.DayOfWeek))
+                    {
+                        // Override schedule flexibility with employee setting
+                        bool isFlexible = isFlexibleHours || schedule.IsFlexibleSchedule;
+                        
+                        double expectedWorkHours = isFlexibleHours 
+                            ? requiredWorkHours 
+                            : schedule.CalculateExpectedWorkHours(attendanceDate);
+                        
+                        attendance.IsFlexibleSchedule = isFlexible;
+                        attendance.ExpectedWorkHours = expectedWorkHours;
+                        
+                        if (!isFlexible)
+                        {
+                            var expectedStartTime = new DateTime(
+                                attendanceDate.Year, attendanceDate.Month, attendanceDate.Day,
+                                schedule.StartTime.Hours, schedule.StartTime.Minutes, 0
+                            );
+                            
+                            var latestAllowedTime = expectedStartTime.AddMinutes(schedule.FlexTimeAllowanceMinutes);
+                            
+                            if (now > latestAllowedTime)
+                            {
+                                attendance.IsLateArrival = true;
+                                attendance.LateMinutes = now - expectedStartTime;
+                                attendance.AttendanceCode = "L"; // L for Late
+                            }
+                            else if (now < expectedStartTime)
+                            {
+                                attendance.IsEarlyArrival = true;
+                                attendance.EarlyArrivalMinutes = expectedStartTime - now;
+                                attendance.AttendanceCode = "EA"; // EA for Early Arrival
+                            }
+                            else
+                            {
+                                attendance.AttendanceCode = "P"; // P for Present
+                            }
+                        }
+                        else
+                        {
+                            // For flexible schedules, just record check-in
+                            attendance.AttendanceCode = "P"; // P for Present
+                        }
+                    }
+                    
+                    using var ctx = NewCtx();
+                    ctx.Attendances.Update(attendance);
+                    await ctx.SaveChangesAsync();
+                    
+                    // Notify that attendance records have changed
+                    _dataRefreshService.NotifyAttendanceChanged();
+                    
+                    Trace.WriteLine($"[Attendance Check-In] Success - Updated existing attendance record ID: {attendance.Id} with check-in time");
+                    return attendance;
                 }
-                
-                using var refreshCtx = NewCtx();
-                attendance = await refreshCtx.Attendances.FindAsync(attendance.Id);
-                
-                return attendance;
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"[Attendance Check-In] ERROR - Failed check-in for employee ID: {employeeId}: {ex.Message}");
+                Trace.WriteLine($"[Attendance Check-In] ERROR - Failed to check in: {ex.Message}");
                 throw;
             }
         }
@@ -269,117 +346,173 @@ namespace AttandenceDesktop.Services
             {
                 // Get employee info for logging
                 string employeeName = "Unknown";
+                Department employeeDepartment = null;
+                Employee employee = null;
+                bool isFlexibleHours = false;
+                double requiredWorkHours = 8.0;
+                
                 using (var empCtx = NewCtx())
                 {
-                    var emp = await empCtx.Employees
+                    employee = await empCtx.Employees
                         .Include(e => e.Department)
+                        .Include(e => e.WorkSchedule)
                         .FirstOrDefaultAsync(e => e.Id == employeeId);
-                    if (emp != null)
-                    {
-                        employeeName = $"{emp.FirstName} {emp.LastName}";
-                        Trace.WriteLine($"[Attendance Check-Out] Employee info - Name: {employeeName}, Department: {emp.Department?.Name ?? "None"}");
-                    }
-                }
-                
-                var attendance = await GetByEmployeeAndDateAsync(employeeId, today);
-                
-                // Get the employee's work schedule for time calculations
-                var schedule = await WorkScheduleService.GetEmployeeWorkScheduleAsync(employeeId);
-                if (schedule == null)
-                {
-                    Trace.WriteLine($"[Attendance Check-Out] WARNING - No work schedule found for employee {employeeId} ({employeeName})");
-                }
-                else 
-                {
-                    Trace.WriteLine($"[Attendance Check-Out] Found schedule: {schedule.Name}, Start: {schedule.StartTime}, End: {schedule.EndTime}");
-                }
-                
-                if (attendance != null && attendance.CheckInTime.HasValue)
-                {
-                    // Find the existing entity to update it
-                    using var updateCtx2 = NewCtx();
-                    var existingAttendance = await updateCtx2.Attendances.FindAsync(attendance.Id);
-                    if (existingAttendance != null)
-                    {
-                        if (existingAttendance.CheckOutTime.HasValue)
-                        {
-                            Trace.WriteLine($"[Attendance Check-Out] WARNING - Employee ID: {employeeId} ({employeeName}) already checked out at {existingAttendance.CheckOutTime.Value}");
-                        }
-                        else
-                        {
-                            existingAttendance.CheckOutTime = now;
-                            
-                            // Calculate work duration
-                            if (existingAttendance.CheckInTime.HasValue)
-                            {
-                                existingAttendance.WorkDuration = now - existingAttendance.CheckInTime.Value;
-                                Trace.WriteLine($"[Attendance Check-Out] Work duration: {existingAttendance.WorkDuration.Value.TotalHours:F2} hours for employee ID: {employeeId} ({employeeName})");
-                            }
-                            
-                            // Check if the employee is leaving early or working overtime
-                            if (schedule != null && schedule.IsWorkingDay(today.DayOfWeek))
-                            {
-                                // Calculate expected end time
-                                var expectedEndTime = new DateTime(
-                                    today.Year, today.Month, today.Day,
-                                    schedule.EndTime.Hours, schedule.EndTime.Minutes, 0
-                                );
-                                
-                                // Apply flex time allowance for early departure
-                                var earliestAllowedTime = expectedEndTime.AddMinutes(-schedule.FlexTimeAllowanceMinutes);
-                                
-                                Trace.WriteLine($"[Attendance Check-Out] Schedule details - Expected end: {expectedEndTime:HH:mm:ss}, Earliest allowed: {earliestAllowedTime:HH:mm:ss}");
-                                
-                                // Check for early departure
-                                if (now < earliestAllowedTime)
-                                {
-                                    existingAttendance.IsEarlyDeparture = true;
-                                    existingAttendance.EarlyDepartureMinutes = expectedEndTime - now; // Calculate from expected time, not grace period
-                                    Trace.WriteLine($"[Attendance Check-Out] EARLY DEPARTURE - Employee ID: {employeeId} ({employeeName}) left early by {existingAttendance.EarlyDepartureMinutes.Value.TotalMinutes:F0} minutes");
-                                }
-                                
-                                // Check for overtime - no grace period for overtime
-                                if (now > expectedEndTime)
-                                {
-                                    existingAttendance.OvertimeMinutes = now - expectedEndTime;
-                                    existingAttendance.IsOvertime = true;
-                                    Trace.WriteLine($"[Attendance Check-Out] OVERTIME - Employee ID: {employeeId} ({employeeName}) worked {existingAttendance.OvertimeMinutes.Value.TotalMinutes:F0} minutes overtime");
-                                }
-                                else
-                                {
-                                    Trace.WriteLine($"[Attendance Check-Out] REGULAR - Employee ID: {employeeId} ({employeeName}) checked out at regular time");
-                                }
-                            }
-                            else if (schedule != null)
-                            {
-                                Trace.WriteLine($"[Attendance Check-Out] Today ({today.DayOfWeek}) is not a working day according to schedule");
-                            }
-                            
-                            // Update IsComplete flag
-                            existingAttendance.IsComplete = true;
-                            
-                            await updateCtx2.SaveChangesAsync();
-                            
-                            // Notify that attendance data has changed
-                            _dataRefreshService.NotifyAttendanceChanged();
-                            Trace.WriteLine($"[Attendance Check-Out] Success - Updated attendance record ID: {attendance.Id} for employee ID: {employeeId} ({employeeName})");
-                        }
                         
-                        // Refresh from database
-                        using var refreshCtx2 = NewCtx();
-                        attendance = await refreshCtx2.Attendances.FindAsync(attendance.Id);
+                    if (employee != null)
+                    {
+                        employeeName = $"{employee.FirstName} {employee.LastName}";
+                        employeeDepartment = employee.Department;
+                        isFlexibleHours = employee.IsFlexibleHours;
+                        requiredWorkHours = employee.RequiredWorkHoursPerDay;
+                        Trace.WriteLine($"[Attendance Check-Out] Employee info - Name: {employeeName}, Department: {employeeDepartment?.Name ?? "None"}, Flexible Hours: {isFlexibleHours}");
                     }
                 }
-                else
+                
+                // Get the schedule for this employee
+                var schedule = await WorkScheduleService.GetEmployeeWorkScheduleAsync(employeeId);
+                
+                // Check if this is a night shift (might cross midnight)
+                bool isNightShift = false;
+                if (schedule != null && !schedule.IsFlexibleSchedule && !isFlexibleHours)
                 {
-                    Trace.WriteLine($"[Attendance Check-Out] ERROR - No check-in record found for employee ID: {employeeId} ({employeeName}) for today");
+                    isNightShift = schedule.StartTime.Hours > schedule.EndTime.Hours;
                 }
                 
+                // For night shifts that cross midnight, we might need to adjust "today" for attendance purposes
+                DateTime attendanceDate = today;
+                
+                // If it's a night shift and before noon, we might want to check the previous day's record
+                if (isNightShift && now.Hour < 12)
+                {
+                    attendanceDate = today.AddDays(-1);
+                    Trace.WriteLine($"[Attendance Check-Out] Night shift detection - Using previous day ({attendanceDate.ToShortDateString()}) for attendance record");
+                }
+                
+                // Find today's attendance record
+                var attendance = await GetByEmployeeAndDateAsync(employeeId, attendanceDate);
+                
+                if (attendance == null)
+                {
+                    // No attendance record found
+                    var errorMsg = $"No check-in record found for today or yesterday (for night shift). Please check-in first.";
+                    Trace.WriteLine($"[Attendance Check-Out] ERROR - {errorMsg}");
+                    throw new InvalidOperationException(errorMsg);
+                }
+                
+                if (attendance.IsComplete)
+                {
+                    var errorMsg = $"Attendance record already marked as complete.";
+                    Trace.WriteLine($"[Attendance Check-Out] WARNING - {errorMsg}");
+                    throw new InvalidOperationException(errorMsg);
+                }
+                
+                if (!attendance.CheckInTime.HasValue)
+                {
+                    var errorMsg = $"Employee has not checked in yet.";
+                    Trace.WriteLine($"[Attendance Check-Out] ERROR - {errorMsg}");
+                    throw new InvalidOperationException(errorMsg);
+                }
+                
+                // Update check-out time
+                attendance.CheckOutTime = now;
+                attendance.IsComplete = true;
+                
+                // Calculate work duration
+                if (attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue)
+                {
+                    attendance.WorkDuration = attendance.CheckOutTime.Value - attendance.CheckInTime.Value;
+                    Trace.WriteLine($"[Attendance Check-Out] Work duration: {attendance.WorkDuration.Value.TotalHours:F1} hours");
+                }
+                
+                // Check if the employee is leaving early or working overtime based on schedule
+                bool isFlexible = isFlexibleHours || (schedule?.IsFlexibleSchedule ?? false);
+                
+                if (schedule != null && schedule.IsWorkingDay(attendanceDate.DayOfWeek) && !isFlexible)
+                {
+                    // Calculate expected end time
+                    var expectedEndTime = new DateTime(
+                        attendanceDate.Year, attendanceDate.Month, attendanceDate.Day,
+                        schedule.EndTime.Hours, schedule.EndTime.Minutes, 0
+                    );
+                    
+                    // If this is a night shift and end time is less than start time, add a day to the end time
+                    if (isNightShift && schedule.EndTime < schedule.StartTime)
+                    {
+                        expectedEndTime = expectedEndTime.AddDays(1);
+                        Trace.WriteLine($"[Attendance Check-Out] Night shift - adjusted expected end time to: {expectedEndTime:yyyy-MM-dd HH:mm:ss}");
+                    }
+                    
+                    // Apply flex time allowance
+                    var earliestAllowedOut = expectedEndTime.AddMinutes(-schedule.FlexTimeAllowanceMinutes);
+                    
+                    // Check for early departure
+                    if (now < earliestAllowedOut)
+                    {
+                        attendance.IsEarlyDeparture = true;
+                        attendance.EarlyDepartureMinutes = expectedEndTime - now;
+                        attendance.AttendanceCode = "E"; // E for Early departure
+                        Trace.WriteLine($"[Attendance Check-Out] Employee left early by {attendance.EarlyDepartureMinutes.Value.TotalMinutes:0.##} minutes");
+                    }
+                    // Check for overtime
+                    else if (now > expectedEndTime)
+                    {
+                        attendance.IsOvertime = true;
+                        attendance.OvertimeMinutes = now - expectedEndTime;
+                        attendance.AttendanceCode = "O"; // O for Overtime
+                        Trace.WriteLine($"[Attendance Check-Out] Employee worked overtime: {attendance.OvertimeMinutes.Value.TotalMinutes:0.##} minutes");
+                    }
+                    
+                    // If they were late and now leaving early, update the code to LE
+                    if (attendance.IsLateArrival && attendance.IsEarlyDeparture)
+                    {
+                        attendance.AttendanceCode = "LE"; // LE for Late and Early departure
+                    }
+                }
+                else if (isFlexible)
+                {
+                    // For flexible schedules, check if the total work duration meets the required hours
+                    double workHours = attendance.WorkDuration?.TotalHours ?? 0;
+                    double expectedHours = isFlexibleHours ? requiredWorkHours : (schedule?.TotalWorkHours ?? 8.0);
+                    
+                    if (workHours < expectedHours)
+                    {
+                        // Worked less than required hours
+                        var shortfall = TimeSpan.FromHours(expectedHours - workHours);
+                        attendance.IsEarlyDeparture = true;
+                        attendance.EarlyDepartureMinutes = shortfall;
+                        attendance.AttendanceCode = "I"; // I for Incomplete hours
+                        Trace.WriteLine($"[Attendance Check-Out] Flexible schedule: Worked {workHours:0.##}h of {expectedHours:0.##}h required (short by {shortfall.TotalMinutes:0.##} minutes)");
+                    }
+                    else if (workHours > expectedHours)
+                    {
+                        // Worked more than required hours
+                        var excess = TimeSpan.FromHours(workHours - expectedHours);
+                        attendance.IsOvertime = true;
+                        attendance.OvertimeMinutes = excess;
+                        attendance.AttendanceCode = "O"; // O for Overtime
+                        Trace.WriteLine($"[Attendance Check-Out] Flexible schedule: Worked {workHours:0.##}h of {expectedHours:0.##}h required (extra {excess.TotalMinutes:0.##} minutes)");
+                    }
+                    else
+                    {
+                        attendance.AttendanceCode = "P"; // P for Present
+                        Trace.WriteLine($"[Attendance Check-Out] Flexible schedule: Worked exactly {workHours:0.##}h as required");
+                    }
+                }
+                
+                // Save changes
+                using var ctx = NewCtx();
+                ctx.Attendances.Update(attendance);
+                await ctx.SaveChangesAsync();
+                
+                // Notify that attendance records have changed
+                _dataRefreshService.NotifyAttendanceChanged();
+                
+                Trace.WriteLine($"[Attendance Check-Out] Success - Updated attendance record ID: {attendance.Id}");
                 return attendance;
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"[Attendance Check-Out] ERROR - Failed check-out for employee ID: {employeeId}: {ex.Message}");
+                Trace.WriteLine($"[Attendance Check-Out] ERROR - Failed to check out: {ex.Message}");
                 throw;
             }
         }
@@ -789,27 +922,73 @@ namespace AttandenceDesktop.Services
                 {
                     // Get the employee's work schedule
                     var schedule = await WorkScheduleService.GetEmployeeWorkScheduleAsync(attendance.EmployeeId);
-                    if (schedule != null && schedule.IsWorkingDay(attendance.Date.DayOfWeek))
+
+                    if (schedule == null)
+                        continue;
+
+                    bool isFlexible = schedule.IsFlexibleSchedule;
+                    bool isWorkingDay = schedule.IsWorkingDay(attendance.Date.DayOfWeek);
+
+                    if (!isWorkingDay)
                     {
+                        // Not a working day according to schedule, clear all punctuality flags
+                        attendance.IsLateArrival = false;
+                        attendance.IsEarlyDeparture = false;
+                        attendance.LateMinutes = null;
+                        attendance.EarlyDepartureMinutes = null;
+                        attendance.IsOvertime = false;
+                        attendance.OvertimeMinutes = null;
+                        continue;
+                    }
+
+                    if (isFlexible)
+                    {
+                        attendance.IsFlexibleSchedule = true;
+                        attendance.ExpectedWorkHours = schedule.TotalWorkHours;
+
+                        // Clear punctuality flags that are irrelevant
+                        attendance.IsLateArrival = false;
+                        attendance.IsEarlyDeparture = false;
+                        attendance.LateMinutes = null;
+                        attendance.EarlyDepartureMinutes = null;
+
+                        // Ensure WorkDuration is calculated
+                        if (attendance.CheckOutTime.HasValue && attendance.CheckInTime.HasValue && !attendance.WorkDuration.HasValue)
+                        {
+                            attendance.WorkDuration = attendance.CheckOutTime - attendance.CheckInTime;
+                        }
+
+                        // Calculate overtime purely on total hours
+                        if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours > schedule.TotalWorkHours)
+                        {
+                            attendance.IsOvertime = true;
+                            attendance.OvertimeMinutes = attendance.WorkDuration - TimeSpan.FromHours(schedule.TotalWorkHours);
+                        }
+                        else
+                        {
+                            attendance.IsOvertime = false;
+                            attendance.OvertimeMinutes = null;
+                        }
+                    }
+                    else
+                    {
+                        // ---------- Regular (fixed) schedule processing (existing logic) ----------
                         // Calculate expected start time
                         var expectedStartTime = new DateTime(
-                            attendance.Date.Year, 
-                            attendance.Date.Month, 
+                            attendance.Date.Year,
+                            attendance.Date.Month,
                             attendance.Date.Day,
-                            schedule.StartTime.Hours, 
-                            schedule.StartTime.Minutes, 
-                            0
-                        );
-                        
-                        // Apply flex time allowance
+                            schedule.StartTime.Hours,
+                            schedule.StartTime.Minutes,
+                            0);
+
                         var latestAllowedTime = expectedStartTime.AddMinutes(schedule.FlexTimeAllowanceMinutes);
-                        
-                        // Check for late arrival
+
+                        // Late / early arrival logic
                         if (attendance.CheckInTime > latestAllowedTime)
                         {
                             attendance.IsLateArrival = true;
                             attendance.LateMinutes = attendance.CheckInTime - expectedStartTime;
-                            Trace.WriteLine($"[RecalculateMetrics] Employee ID: {attendance.EmployeeId} was late on {attendance.Date:yyyy-MM-dd} by {attendance.LateMinutes.Value.TotalMinutes:F0} minutes");
                         }
                         else if (attendance.CheckInTime < expectedStartTime)
                         {
@@ -817,7 +996,6 @@ namespace AttandenceDesktop.Services
                             attendance.EarlyArrivalMinutes = expectedStartTime - attendance.CheckInTime;
                             attendance.IsLateArrival = false;
                             attendance.LateMinutes = null;
-                            Trace.WriteLine($"[RecalculateMetrics] Employee ID: {attendance.EmployeeId} arrived early on {attendance.Date:yyyy-MM-dd} by {attendance.EarlyArrivalMinutes.Value.TotalMinutes:F0} minutes");
                         }
                         else
                         {
@@ -825,26 +1003,21 @@ namespace AttandenceDesktop.Services
                             attendance.LateMinutes = null;
                             attendance.IsEarlyArrival = false;
                             attendance.EarlyArrivalMinutes = null;
-                            Trace.WriteLine($"[RecalculateMetrics] Employee ID: {attendance.EmployeeId} arrived on time on {attendance.Date:yyyy-MM-dd}");
                         }
-                        
-                        // Check for early departure and overtime if check-out time exists
+
+                        // Early departure / overtime if check-out exists
                         if (attendance.CheckOutTime.HasValue)
                         {
-                            // Calculate expected end time
                             var expectedEndTime = new DateTime(
-                                attendance.Date.Year, 
-                                attendance.Date.Month, 
+                                attendance.Date.Year,
+                                attendance.Date.Month,
                                 attendance.Date.Day,
-                                schedule.EndTime.Hours, 
-                                schedule.EndTime.Minutes, 
-                                0
-                            );
-                            
-                            // Apply flex time allowance for early departure
+                                schedule.EndTime.Hours,
+                                schedule.EndTime.Minutes,
+                                0);
+
                             var earliestAllowedTime = expectedEndTime.AddMinutes(-schedule.FlexTimeAllowanceMinutes);
-                            
-                            // Check for early departure
+
                             if (attendance.CheckOutTime < earliestAllowedTime)
                             {
                                 attendance.IsEarlyDeparture = true;
@@ -855,28 +1028,18 @@ namespace AttandenceDesktop.Services
                                 attendance.IsEarlyDeparture = false;
                                 attendance.EarlyDepartureMinutes = null;
                             }
-                            
-                            // Check for overtime - no grace period for overtime
+
                             if (attendance.CheckOutTime > expectedEndTime)
                             {
-                                attendance.OvertimeMinutes = attendance.CheckOutTime - expectedEndTime;
                                 attendance.IsOvertime = true;
+                                attendance.OvertimeMinutes = attendance.CheckOutTime - expectedEndTime;
                             }
                             else
                             {
-                                attendance.OvertimeMinutes = null;
                                 attendance.IsOvertime = false;
+                                attendance.OvertimeMinutes = null;
                             }
                         }
-                    }
-                    else
-                    {
-                        // Not a working day according to schedule, reset flags
-                        attendance.IsLateArrival = false;
-                        attendance.IsEarlyDeparture = false;
-                        attendance.LateMinutes = null;
-                        attendance.EarlyDepartureMinutes = null;
-                        attendance.OvertimeMinutes = null;
                     }
                 }
             }

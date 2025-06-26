@@ -101,6 +101,8 @@ namespace AttandenceDesktop.Services
                 existingEmployee.EmployeeCode = employee.EmployeeCode;
                 existingEmployee.Position = employee.Position;
                 existingEmployee.HireDate = employee.HireDate;
+                existingEmployee.IsFlexibleHours = employee.IsFlexibleHours;
+                existingEmployee.RequiredWorkHoursPerDay = employee.RequiredWorkHoursPerDay;
                 
                 // Save changes
                 await ctx.SaveChangesAsync();

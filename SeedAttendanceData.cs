@@ -11,85 +11,275 @@ namespace AttandenceDesktop
     {
         public static void ClearAndCreateSampleData()
         {
-            Console.WriteLine("Clearing existing data and creating new sample data...");
-            
-            // Create a new database context
-            var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
-            var dbPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TimeAttendance.db");
-            var connectionString = $"Data Source={dbPath}";
-            optionsBuilder.UseSqlite(connectionString);
-            
-            // Update the database schema first
-            DatabaseUpdater.UpdateDatabase();
-            
-            using (var context = new ApplicationDbContext(optionsBuilder.Options))
+            try
             {
-                // Clear ALL existing data
-                Console.WriteLine("Clearing all existing data...");
-                context.Attendances.RemoveRange(context.Attendances.ToList());
-                context.Employees.RemoveRange(context.Employees.ToList());
-                context.WorkSchedules.RemoveRange(context.WorkSchedules.ToList());
-                context.WorkCalendars.RemoveRange(context.WorkCalendars.ToList());
-                context.Departments.RemoveRange(context.Departments.ToList());
-                context.SaveChanges();
-                
-                // 1. Create departments
-                Console.WriteLine("Creating departments...");
-                var departments = CreateDepartments(context);
-                
-                // 2. Create different work schedules
-                Console.WriteLine("Creating work schedules...");
-                var workSchedules = CreateWorkSchedules(context);
-                
-                // 3. Create employees with different work schedules
-                Console.WriteLine("Creating employees...");
-                var employees = CreateEmployees(context, departments, workSchedules);
-                
-                // 4. Create work calendar (holidays)
-                var today = DateTime.Today;
-                var holidays = CreateHolidays(context, today);
-                
-                // 5. Create attendance records for each employee
-                Console.WriteLine("Creating sample attendance records...");
-                var startDate = today.AddDays(-30);
-                
-                foreach (var employee in employees)
+                Console.WriteLine("Starting ClearAndCreateSampleData method...");
+                using (var context = ApplicationDbContext.Create())
                 {
-                    var workSchedule = workSchedules.FirstOrDefault(ws => ws.Id == employee.WorkScheduleId);
-                    if (workSchedule != null)
+                    // Delete all existing data
+                    Console.WriteLine("Clearing existing data...");
+                    context.Attendances.RemoveRange(context.Attendances.ToList());
+                    context.WorkCalendars.RemoveRange(context.WorkCalendars.ToList());
+                    context.Employees.RemoveRange(context.Employees.ToList());
+                    context.WorkSchedules.RemoveRange(context.WorkSchedules.ToList());
+                    context.Departments.RemoveRange(context.Departments.ToList());
+                    context.SaveChanges();
+                    Console.WriteLine("Data cleared successfully.");
+                    
+                    // Create new data
+                    Console.WriteLine("Creating new sample data...");
+                    var today = DateTime.Today;
+                    Console.WriteLine("Creating departments...");
+                    var departments = CreateDepartments(context);
+                    Console.WriteLine("Creating work schedules...");
+                    var workSchedules = CreateWorkSchedules(context, departments);
+                    Console.WriteLine("Creating special test case employees...");
+                    var specialEmployees = CreateTestCaseEmployees(context, departments, workSchedules);
+                    Console.WriteLine("Creating other employees...");
+                    var regularEmployees = CreateEmployees(context, departments, workSchedules);
+                    var allEmployees = regularEmployees.Concat(specialEmployees).ToList();
+                    Console.WriteLine("Creating holidays...");
+                    var holidays = CreateHolidays(context, today);
+                    Console.WriteLine("Creating attendance records...");
+                    CreateAttendanceRecords(context, regularEmployees, workSchedules, holidays, today);
+                    
+                    Console.WriteLine("Sample data created successfully!");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR in ClearAndCreateSampleData: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                throw; // Rethrow to let the caller handle it if needed
+            }
+        }
+        
+        // New method to create the specific test case with two employees
+        private static List<Employee> CreateTestCaseEmployees(ApplicationDbContext context, List<Department> departments, List<WorkSchedule> workSchedules)
+        {
+            Console.WriteLine("Creating test case with two employees in the same department (one fixed, one flexible)...");
+            
+            // Get the IT department
+            var itDepartment = departments.FirstOrDefault(d => d.Name == "IT");
+            if (itDepartment == null)
+            {
+                Console.WriteLine("IT department not found, creating it...");
+                itDepartment = new Department { Name = "IT" };
+                context.Departments.Add(itDepartment);
+                context.SaveChanges();
+            }
+            
+            // Create or get schedules for the IT department
+            var fixedSchedule = workSchedules.FirstOrDefault(ws => ws.DepartmentId == itDepartment.Id && !ws.IsFlexibleSchedule);
+            if (fixedSchedule == null)
+            {
+                fixedSchedule = new WorkSchedule
+                {
+                    Name = "IT Standard Schedule",
+                    IsFlexibleSchedule = false,
+                    StartTime = new TimeSpan(8, 0, 0), // 8:00 AM
+                    EndTime = new TimeSpan(17, 0, 0),   // 5:00 PM
+                    TotalWorkHours = 9.0,
+                    IsWorkingDayMonday = true,
+                    IsWorkingDayTuesday = true,
+                    IsWorkingDayWednesday = true,
+                    IsWorkingDayThursday = true,
+                    IsWorkingDayFriday = true,
+                    IsWorkingDaySaturday = false,
+                    IsWorkingDaySunday = false,
+                    FlexTimeAllowanceMinutes = 15,
+                    Description = "Standard IT department working hours",
+                    DepartmentId = itDepartment.Id
+                };
+                context.WorkSchedules.Add(fixedSchedule);
+                context.SaveChanges();
+            }
+            
+            var flexibleSchedule = workSchedules.FirstOrDefault(ws => ws.DepartmentId == itDepartment.Id && ws.IsFlexibleSchedule);
+            if (flexibleSchedule == null)
+            {
+                flexibleSchedule = new WorkSchedule
+                {
+                    Name = "IT Flexible Schedule",
+                    IsFlexibleSchedule = true,
+                    TotalWorkHours = 8.0,
+                    IsWorkingDayMonday = true,
+                    IsWorkingDayTuesday = true,
+                    IsWorkingDayWednesday = true,
+                    IsWorkingDayThursday = true,
+                    IsWorkingDayFriday = true,
+                    IsWorkingDaySaturday = false,
+                    IsWorkingDaySunday = false,
+                    FlexTimeAllowanceMinutes = 60,
+                    Description = "Flexible working hours for IT department",
+                    DepartmentId = itDepartment.Id
+                };
+                context.WorkSchedules.Add(flexibleSchedule);
+                context.SaveChanges();
+            }
+            
+            var employees = new List<Employee>
+            {
+                // Employee with fixed schedule
+                new Employee
+                {
+                    FirstName = "علی",
+                    LastName = "محمدی",
+                    Email = "ali.mohammadi@company.com",
+                    PhoneNumber = "09123456789",
+                    DepartmentId = itDepartment.Id,
+                    Position = "برنامه‌نویس",
+                    EmployeeCode = "IT-001",
+                    HireDate = DateTime.Now.AddDays(-90),
+                    IsFlexibleHours = false,
+                    RequiredWorkHoursPerDay = 8.0,
+                    WorkScheduleId = fixedSchedule.Id
+                },
+                
+                // Employee with flexible hours
+                new Employee
+                {
+                    FirstName = "محمد",
+                    LastName = "حسینی",
+                    Email = "mohammad.hosseini@company.com",
+                    PhoneNumber = "09198765432",
+                    DepartmentId = itDepartment.Id,
+                    Position = "برنامه‌نویس",
+                    EmployeeCode = "IT-002",
+                    HireDate = DateTime.Now.AddDays(-60),
+                    IsFlexibleHours = true, // This employee has flexible hours
+                    RequiredWorkHoursPerDay = 8.0, // Must work exactly 8 hours total
+                    WorkScheduleId = flexibleSchedule.Id
+                }
+            };
+            
+            // Add employees to database
+            context.Employees.AddRange(employees);
+            context.SaveChanges();
+            
+            // Create some attendance records for these employees
+            var today = DateTime.Today;
+            var attendances = new List<Attendance>();
+            var random = new Random();
+            
+            // Create attendance records for the past 30 days
+            for (int day = -30; day <= 0; day++)
+            {
+                var date = today.AddDays(day);
+                
+                // Skip weekends
+                if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Friday)
+                    continue;
+                
+                // Fixed schedule employee - arrives on time, leaves on time
+                if (day > -20) // Only the last 20 days for standard employee
+                {
+                    var fixedCheckIn = date.Date.Add(fixedSchedule.StartTime);
+                    var fixedCheckOut = date.Date.Add(fixedSchedule.EndTime);
+                    var fixedDuration = fixedCheckOut - fixedCheckIn;
+                    
+                    attendances.Add(new Attendance
                     {
-                        CreateAttendanceRecords(
-                            context, 
-                            employee.Id, 
-                            startDate, 
-                            today, 
-                            workSchedule,
-                            holidays,
-                            presentFrequency: 0.6,
-                            absentFrequency: 0.05,
-                            lateArrivalFrequency: 0.1,
-                            earlyDepartureFrequency: 0.1,
-                            overtimeFrequency: 0.05,
-                            earlyArrivalFrequency: 0.1
-                        );
-                    }
+                        EmployeeId = employees[0].Id,
+                        Date = date,
+                        CheckInTime = fixedCheckIn,
+                        CheckOutTime = fixedCheckOut,
+                        WorkDuration = fixedDuration,
+                        IsComplete = true,
+                        Notes = "",
+                        IsLateArrival = false,
+                        IsEarlyDeparture = false,
+                        IsOvertime = false,
+                        IsEarlyArrival = false,
+                        IsFlexibleSchedule = false,
+                        ExpectedWorkHours = 8.0,
+                        AttendanceCode = "P"
+                    });
                 }
                 
-                Console.WriteLine("Sample data created successfully.");
+                // Flexible schedule employee - works 8 hours but at different times each day
+                var flexibleStartHours = new[] { 9, 11, 13, 7, 10, 12, 8, 14, 6 };
+                var idx = (day + 30) % flexibleStartHours.Length;
+                var flexCheckIn = date.Date.AddHours(flexibleStartHours[idx]);
+                
+                // Vary the work duration around 8 hours (7.5 to 8.5)
+                double workHours = 8.0;
+                if (random.Next(100) < 30) 
+                {
+                    // Sometimes work a bit more or less
+                    workHours = 7.5 + (random.NextDouble() * 1.0);
+                }
+                
+                var flexCheckOut = flexCheckIn.AddHours(workHours);
+                var flexDuration = TimeSpan.FromHours(workHours);
+                
+                // Set overtime flag if worked more than 8 hours
+                bool isOvertime = workHours > 8.0;
+                TimeSpan? overtimeMinutes = isOvertime ? 
+                    TimeSpan.FromHours(workHours - 8.0) : null;
+                
+                attendances.Add(new Attendance
+                {
+                    EmployeeId = employees[1].Id,
+                    Date = date,
+                    CheckInTime = flexCheckIn,
+                    CheckOutTime = flexCheckOut,
+                    WorkDuration = flexDuration,
+                    IsComplete = true,
+                    Notes = "",
+                    IsLateArrival = false, // No late arrival concept for flexible hours
+                    IsEarlyDeparture = false, // No early departure concept for flexible hours
+                    IsOvertime = isOvertime,
+                    OvertimeMinutes = overtimeMinutes,
+                    IsEarlyArrival = false,
+                    IsFlexibleSchedule = true, // Very important to mark as flexible schedule
+                    ExpectedWorkHours = 8.0,
+                    AttendanceCode = isOvertime ? "O" : "P"
+                });
             }
+            
+            // Add today's record for flexible employee with incomplete status (still working)
+            if (DateTime.Now.DayOfWeek != DayOfWeek.Friday && DateTime.Now.DayOfWeek != DayOfWeek.Saturday)
+            {
+                var todayCheckIn = DateTime.Today.AddHours(10); // Started at 10 AM today
+                
+                attendances.Add(new Attendance
+                {
+                    EmployeeId = employees[1].Id,
+                    Date = DateTime.Today,
+                    CheckInTime = todayCheckIn,
+                    CheckOutTime = null, // Still working
+                    WorkDuration = null,
+                    IsComplete = false,
+                    Notes = "Currently working",
+                    IsLateArrival = false,
+                    IsEarlyDeparture = false,
+                    IsOvertime = false,
+                    IsEarlyArrival = false,
+                    IsFlexibleSchedule = true,
+                    ExpectedWorkHours = 8.0,
+                    AttendanceCode = "W" // Working (not checked out)
+                });
+            }
+            
+            context.Attendances.AddRange(attendances);
+            context.SaveChanges();
+            Console.WriteLine($"Created {attendances.Count} attendance records for test case employees.");
+            
+            return employees;
         }
         
         private static List<Department> CreateDepartments(ApplicationDbContext context)
         {
+            Console.WriteLine("Creating departments...");
             var departments = new List<Department>
             {
-                new Department { Name = "مالی" },
-                new Department { Name = "فناوری اطلاعات" },
-                new Department { Name = "منابع انسانی" },
-                new Department { Name = "بازاریابی" },
-                new Department { Name = "عملیات" },
-                new Department { Name = "پشتیبانی فنی" },
-                new Department { Name = "تحقیق و توسعه" }
+                new Department { Name = "HR" },
+                new Department { Name = "IT" },
+                new Department { Name = "Finance" },
+                new Department { Name = "Operations" },
+                new Department { Name = "Marketing" },
+                new Department { Name = "Research & Development" }
             };
             
             context.Departments.AddRange(departments);
@@ -97,71 +287,106 @@ namespace AttandenceDesktop
             return departments;
         }
         
-        private static List<WorkSchedule> CreateWorkSchedules(ApplicationDbContext context)
+        private static List<WorkSchedule> CreateWorkSchedules(ApplicationDbContext context, List<Department> departments)
         {
-            var workSchedules = new List<WorkSchedule>
+            Console.WriteLine("Creating work schedules...");
+            var workSchedules = new List<WorkSchedule>();
+            
+            // Standard fixed schedules for each department
+            foreach (var dept in departments)
             {
-                new WorkSchedule
+                // Fixed schedule for each department
+                workSchedules.Add(new WorkSchedule
                 {
-                    Name = "برنامه کاری عادی",
-                    StartTime = new TimeSpan(9, 0, 0), // 9:00 AM
-                    EndTime = new TimeSpan(17, 0, 0),  // 5:00 PM
-                    IsWorkingDaySunday = false,
+                    Name = $"{dept.Name} Standard Schedule",
+                    IsFlexibleSchedule = false,
+                    StartTime = new TimeSpan(8, 30, 0), // 8:30 AM
+                    EndTime = new TimeSpan(17, 0, 0),   // 5:00 PM
+                    TotalWorkHours = 8.5,
                     IsWorkingDayMonday = true,
                     IsWorkingDayTuesday = true,
                     IsWorkingDayWednesday = true,
                     IsWorkingDayThursday = true,
                     IsWorkingDayFriday = true,
                     IsWorkingDaySaturday = false,
-                    FlexTimeAllowanceMinutes = 15,
-                    Description = "برنامه کاری استاندارد 9 تا 5"
-                },
-                new WorkSchedule
-                {
-                    Name = "برنامه کاری انعطاف‌پذیر",
-                    StartTime = new TimeSpan(8, 0, 0), // 8:00 AM
-                    EndTime = new TimeSpan(16, 0, 0),  // 4:00 PM
                     IsWorkingDaySunday = false,
-                    IsWorkingDayMonday = true,
-                    IsWorkingDayTuesday = true,
-                    IsWorkingDayWednesday = true,
-                    IsWorkingDayThursday = true,
-                    IsWorkingDayFriday = true,
-                    IsWorkingDaySaturday = false,
-                    FlexTimeAllowanceMinutes = 30,
-                    Description = "برنامه کاری با زمان شناور بیشتر"
-                },
-                new WorkSchedule
-                {
-                    Name = "برنامه کاری آخر هفته",
-                    StartTime = new TimeSpan(10, 0, 0), // 10:00 AM
-                    EndTime = new TimeSpan(18, 0, 0),   // 6:00 PM
-                    IsWorkingDaySunday = true,
-                    IsWorkingDayMonday = false,
-                    IsWorkingDayTuesday = false,
-                    IsWorkingDayWednesday = false,
-                    IsWorkingDayThursday = false,
-                    IsWorkingDayFriday = false,
-                    IsWorkingDaySaturday = true,
                     FlexTimeAllowanceMinutes = 15,
-                    Description = "برنامه کاری برای کارکنان آخر هفته"
-                },
-                new WorkSchedule
+                    Description = $"Standard {dept.Name} department working hours",
+                    DepartmentId = dept.Id
+                });
+                
+                // Additionally, create a flexible schedule for IT and R&D departments
+                if (dept.Name == "IT" || dept.Name == "Research & Development")
                 {
-                    Name = "برنامه کاری شیفت شب",
-                    StartTime = new TimeSpan(22, 0, 0), // 10:00 PM
-                    EndTime = new TimeSpan(6, 0, 0),    // 6:00 AM
-                    IsWorkingDaySunday = false,
-                    IsWorkingDayMonday = true,
-                    IsWorkingDayTuesday = true,
-                    IsWorkingDayWednesday = true,
-                    IsWorkingDayThursday = true,
-                    IsWorkingDayFriday = false,
-                    IsWorkingDaySaturday = false,
-                    FlexTimeAllowanceMinutes = 15,
-                    Description = "برنامه کاری برای شیفت شب"
+                    workSchedules.Add(new WorkSchedule
+                    {
+                        Name = $"{dept.Name} Flexible Schedule",
+                        IsFlexibleSchedule = true,
+                        TotalWorkHours = 8.0,
+                        IsWorkingDayMonday = true,
+                        IsWorkingDayTuesday = true,
+                        IsWorkingDayWednesday = true,
+                        IsWorkingDayThursday = true,
+                        IsWorkingDayFriday = true,
+                        IsWorkingDaySaturday = false,
+                        IsWorkingDaySunday = false,
+                        FlexTimeAllowanceMinutes = 60, // More flexibility for flexible schedules
+                        Description = $"Flexible working hours for {dept.Name} department",
+                        DepartmentId = dept.Id
+                    });
                 }
-            };
+            }
+            
+            // Also create some global schedules not tied to specific departments
+            workSchedules.Add(new WorkSchedule
+            {
+                Name = "Early Shift",
+                IsFlexibleSchedule = false,
+                StartTime = new TimeSpan(6, 0, 0),  // 6:00 AM
+                EndTime = new TimeSpan(14, 30, 0),  // 2:30 PM
+                TotalWorkHours = 8.5,
+                IsWorkingDayMonday = true,
+                IsWorkingDayTuesday = true,
+                IsWorkingDayWednesday = true,
+                IsWorkingDayThursday = true,
+                IsWorkingDayFriday = true,
+                FlexTimeAllowanceMinutes = 10,
+                Description = "Early morning shift"
+            });
+            
+            workSchedules.Add(new WorkSchedule
+            {
+                Name = "Night Shift",
+                IsFlexibleSchedule = false,
+                StartTime = new TimeSpan(22, 0, 0), // 10:00 PM
+                EndTime = new TimeSpan(6, 30, 0),   // 6:30 AM (next day)
+                TotalWorkHours = 8.5,
+                IsWorkingDayMonday = true,
+                IsWorkingDayTuesday = true,
+                IsWorkingDayWednesday = true,
+                IsWorkingDayThursday = true,
+                IsWorkingDaySunday = true,
+                FlexTimeAllowanceMinutes = 10,
+                Description = "Night shift schedule"
+            });
+            
+            workSchedules.Add(new WorkSchedule
+            {
+                Name = "Weekend Shift",
+                IsFlexibleSchedule = false,
+                StartTime = new TimeSpan(9, 0, 0),  // 9:00 AM
+                EndTime = new TimeSpan(17, 30, 0),  // 5:30 PM
+                TotalWorkHours = 8.5,
+                IsWorkingDayMonday = false,
+                IsWorkingDayTuesday = false,
+                IsWorkingDayWednesday = false,
+                IsWorkingDayThursday = false,
+                IsWorkingDayFriday = false,
+                IsWorkingDaySaturday = true,
+                IsWorkingDaySunday = true,
+                FlexTimeAllowanceMinutes = 15,
+                Description = "Weekend only schedule"
+            });
             
             context.WorkSchedules.AddRange(workSchedules);
             context.SaveChanges();
@@ -170,131 +395,81 @@ namespace AttandenceDesktop
         
         private static List<Employee> CreateEmployees(ApplicationDbContext context, List<Department> departments, List<WorkSchedule> workSchedules)
         {
+            Console.WriteLine("Creating employees...");
+            var rand = new Random();
             var employees = new List<Employee>();
-            
-            // Employees for Finance Department
-            employees.Add(new Employee
+            var positions = new Dictionary<string, List<string>>
             {
-                FirstName = "علی",
-                LastName = "محمدی",
-                Email = "ali@example.com",
-                PhoneNumber = "09121234567",
-                DepartmentId = departments.First(d => d.Name == "مالی").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری عادی").Id,
-                HireDate = DateTime.Now.AddYears(-2),
-                EmployeeCode = "F001",
-                Position = "حسابدار"
-            });
+                { "HR", new List<string> { "HR Manager", "Recruiter", "HR Specialist", "Training Coordinator" } },
+                { "IT", new List<string> { "Software Engineer", "System Administrator", "DevOps Engineer", "QA Engineer", "IT Manager" } },
+                { "Finance", new List<string> { "Accountant", "Financial Analyst", "Payroll Specialist", "Finance Manager" } },
+                { "Operations", new List<string> { "Operations Manager", "Logistics Coordinator", "Warehouse Supervisor", "Supply Chain Analyst" } },
+                { "Marketing", new List<string> { "Marketing Manager", "Social Media Specialist", "Content Writer", "SEO Specialist" } },
+                { "Research & Development", new List<string> { "Research Scientist", "Product Developer", "R&D Manager", "Innovation Specialist" } }
+            };
             
-            employees.Add(new Employee
-            {
-                FirstName = "مریم",
-                LastName = "حسینی",
-                Email = "maryam@example.com",
-                PhoneNumber = "09127654321",
-                DepartmentId = departments.First(d => d.Name == "مالی").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری انعطاف‌پذیر").Id,
-                HireDate = DateTime.Now.AddYears(-1),
-                EmployeeCode = "F002",
-                Position = "مدیر مالی"
-            });
+            var firstNames = new[] { "Sara", "Mohammad", "Ali", "Fatima", "Hassan", "Maryam", "Reza", "Zahra", "Ahmad", "Leila", "Javad", "Narges", "Amir", "Fatemeh", "Hossein" };
+            var lastNames = new[] { "Ahmadi", "Mohammadi", "Hosseini", "Rezaei", "Karimi", "Jafari", "Moradi", "Kazemi", "Hashemi", "Tehrani", "Akbari", "Nasiri", "Salehi", "Ebrahimi" };
             
-            // Employees for IT Department
-            employees.Add(new Employee
+            // Create employees for each department
+            foreach (var dept in departments)
             {
-                FirstName = "سارا",
-                LastName = "احمدی",
-                Email = "sara@example.com",
-                PhoneNumber = "09131234567",
-                DepartmentId = departments.First(d => d.Name == "فناوری اطلاعات").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری عادی").Id,
-                HireDate = DateTime.Now.AddYears(-1),
-                EmployeeCode = "IT001",
-                Position = "برنامه‌نویس"
-            });
-            
-            employees.Add(new Employee
-            {
-                FirstName = "حسین",
-                LastName = "رضایی",
-                Email = "hossein@example.com",
-                PhoneNumber = "09133456789",
-                DepartmentId = departments.First(d => d.Name == "فناوری اطلاعات").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری شیفت شب").Id,
-                HireDate = DateTime.Now.AddMonths(-8),
-                EmployeeCode = "IT002",
-                Position = "مدیر زیرساخت"
-            });
-            
-            // Employees for HR Department
-            employees.Add(new Employee
-            {
-                FirstName = "محمد",
-                LastName = "رضایی",
-                Email = "mohammad@example.com",
-                PhoneNumber = "09141234567",
-                DepartmentId = departments.First(d => d.Name == "منابع انسانی").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری عادی").Id,
-                HireDate = DateTime.Now.AddMonths(-6),
-                EmployeeCode = "HR001",
-                Position = "کارشناس منابع انسانی"
-            });
-            
-            // Employees for Marketing Department
-            employees.Add(new Employee
-            {
-                FirstName = "زهرا",
-                LastName = "کریمی",
-                Email = "zahra@example.com",
-                PhoneNumber = "09151234567",
-                DepartmentId = departments.First(d => d.Name == "بازاریابی").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری انعطاف‌پذیر").Id,
-                HireDate = DateTime.Now.AddMonths(-8),
-                EmployeeCode = "M001",
-                Position = "کارشناس بازاریابی"
-            });
-            
-            // Employees for Operations Department
-            employees.Add(new Employee
-            {
-                FirstName = "رضا",
-                LastName = "حسینی",
-                Email = "reza@example.com",
-                PhoneNumber = "09161234567",
-                DepartmentId = departments.First(d => d.Name == "عملیات").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری عادی").Id,
-                HireDate = DateTime.Now.AddMonths(-12),
-                EmployeeCode = "OP001",
-                Position = "مدیر عملیات"
-            });
-            
-            // Employees for Technical Support Department
-            employees.Add(new Employee
-            {
-                FirstName = "فاطمه",
-                LastName = "محمودی",
-                Email = "fateme@example.com",
-                PhoneNumber = "09171234567",
-                DepartmentId = departments.First(d => d.Name == "پشتیبانی فنی").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری آخر هفته").Id,
-                HireDate = DateTime.Now.AddMonths(-4),
-                EmployeeCode = "TS001",
-                Position = "کارشناس پشتیبانی"
-            });
-            
-            // Employees for R&D Department
-            employees.Add(new Employee
-            {
-                FirstName = "امیر",
-                LastName = "علوی",
-                Email = "amir@example.com",
-                PhoneNumber = "09181234567",
-                DepartmentId = departments.First(d => d.Name == "تحقیق و توسعه").Id,
-                WorkScheduleId = workSchedules.First(w => w.Name == "برنامه کاری انعطاف‌پذیر").Id,
-                HireDate = DateTime.Now.AddMonths(-15),
-                EmployeeCode = "RD001",
-                Position = "مهندس تحقیق و توسعه"
-            });
+                var deptPositions = positions[dept.Name];
+                var deptSchedules = workSchedules.Where(ws => ws.DepartmentId == dept.Id || ws.DepartmentId == null).ToList();
+                
+                // Create 3-5 employees per department
+                int empCount = rand.Next(3, 6);
+                for (int i = 0; i < empCount; i++)
+                {
+                    string firstName = firstNames[rand.Next(firstNames.Length)];
+                    string lastName = lastNames[rand.Next(lastNames.Length)];
+                    string position = deptPositions[rand.Next(deptPositions.Count)];
+                    
+                    // Decide if this employee has flexible hours
+                    bool isFlexible = (dept.Name == "IT" || dept.Name == "Research & Development") ? rand.Next(100) > 50 : rand.Next(100) > 80;
+                    
+                    // Pick an appropriate schedule
+                    WorkSchedule schedule = null;
+                    if (isFlexible)
+                    {
+                        // Try to get a flexible schedule for this department
+                        schedule = deptSchedules.FirstOrDefault(ws => ws.IsFlexibleSchedule);
+                        // If none exists, just use regular department schedule
+                        if (schedule == null)
+                            schedule = deptSchedules.FirstOrDefault(ws => ws.DepartmentId == dept.Id);
+                    }
+                    else
+                    {
+                        // Get a fixed schedule (prefer department's own schedule)
+                        schedule = deptSchedules.FirstOrDefault(ws => ws.DepartmentId == dept.Id && !ws.IsFlexibleSchedule);
+                        if (schedule == null)
+                            schedule = deptSchedules.FirstOrDefault(ws => !ws.IsFlexibleSchedule);
+                    }
+                    
+                    // Create the employee
+                    var employee = new Employee
+                    {
+                        FirstName = firstName,
+                        LastName = lastName,
+                        Email = $"{firstName.ToLower()}.{lastName.ToLower()}@company.com",
+                        PhoneNumber = $"09{rand.Next(10000000, 99999999)}",
+                        DepartmentId = dept.Id,
+                        Position = position,
+                        EmployeeCode = $"{dept.Name.Substring(0, 1)}{(100 + i):000}",
+                        HireDate = DateTime.Now.AddDays(-rand.Next(30, 1000)),
+                        IsFlexibleHours = isFlexible,
+                        RequiredWorkHoursPerDay = isFlexible ? (rand.Next(4, 9) + rand.Next(0, 2) * 0.5) : 8.0
+                    };
+                    
+                    // Assign work schedule if one was selected
+                    if (schedule != null)
+                    {
+                        employee.WorkScheduleId = schedule.Id;
+                    }
+                    
+                    employees.Add(employee);
+                }
+            }
             
             context.Employees.AddRange(employees);
             context.SaveChanges();
@@ -303,221 +478,306 @@ namespace AttandenceDesktop
         
         private static List<WorkCalendar> CreateHolidays(ApplicationDbContext context, DateTime today)
         {
-            var holidays = new List<WorkCalendar>
+            Console.WriteLine("Creating holidays and special work days...");
+            var holidays = new List<WorkCalendar>();
+            
+            // Add some holidays in the past 30 days and upcoming month
+            
+            // Example: National holiday
+            holidays.Add(new WorkCalendar
             {
-                new WorkCalendar 
-                { 
-                    Name = "تعطیلی رسمی 1", 
-                    Date = today.AddDays(5), 
-                    EntryType = CalendarEntryType.Holiday,
-                    Description = "تعطیلی رسمی نمونه 1"
-                },
-                new WorkCalendar 
-                { 
-                    Name = "تعطیلی رسمی 2", 
-                    Date = today.AddDays(12), 
-                    EntryType = CalendarEntryType.Holiday,
-                    Description = "تعطیلی رسمی نمونه 2"
-                },
-                new WorkCalendar 
-                { 
-                    Name = "تعطیلی رسمی 3", 
-                    Date = today.AddDays(19), 
-                    EntryType = CalendarEntryType.Holiday,
-                    Description = "تعطیلی رسمی نمونه 3"
-                },
-                new WorkCalendar 
-                { 
-                    Name = "تعطیلی رسمی 4", 
-                    Date = today.AddDays(-7), 
-                    EntryType = CalendarEntryType.Holiday,
-                    Description = "تعطیلی رسمی نمونه 4 (گذشته)"
-                },
-                new WorkCalendar 
-                { 
-                    Name = "تعطیلی رسمی 5", 
-                    Date = today.AddDays(-14), 
-                    EntryType = CalendarEntryType.Holiday,
-                    Description = "تعطیلی رسمی نمونه 5 (گذشته)"
-                }
-            };
+                Date = today.AddDays(-15),
+                Name = "National Holiday",
+                Description = "National celebration day",
+                EntryType = CalendarEntryType.Holiday,
+                IsRecurringAnnually = true
+            });
+            
+            // Example: Company event
+            holidays.Add(new WorkCalendar
+            {
+                Date = today.AddDays(-7),
+                Name = "Company Event",
+                Description = "Annual company event day",
+                EntryType = CalendarEntryType.NonWorkingDay,
+                IsRecurringAnnually = false
+            });
+            
+            // Example: Short working day
+            holidays.Add(new WorkCalendar
+            {
+                Date = today.AddDays(7),
+                Name = "Short Day",
+                Description = "Leave early for Eid preparations",
+                EntryType = CalendarEntryType.ShortDay,
+                IsRecurringAnnually = false
+            });
+            
+            // Example: Religious holiday
+            holidays.Add(new WorkCalendar
+            {
+                Date = today.AddDays(14),
+                Name = "Religious Holiday",
+                Description = "Religious celebration",
+                EntryType = CalendarEntryType.Holiday,
+                IsRecurringAnnually = true
+            });
             
             context.WorkCalendars.AddRange(holidays);
             context.SaveChanges();
             return holidays;
         }
         
-        private static void CreateAttendanceRecords(
-            ApplicationDbContext context, 
-            int employeeId, 
-            DateTime startDate, 
-            DateTime endDate, 
-            WorkSchedule workSchedule,
-            List<WorkCalendar> holidays,
-            double presentFrequency,
-            double absentFrequency,
-            double lateArrivalFrequency,
-            double earlyDepartureFrequency,
-            double overtimeFrequency,
-            double earlyArrivalFrequency)
+        private static void CreateAttendanceRecords(ApplicationDbContext context, List<Employee> employees, List<WorkSchedule> workSchedules, List<WorkCalendar> holidays, DateTime today)
         {
-            var random = new Random();
-            var currentDate = startDate;
+            Console.WriteLine("Creating attendance records for the past 30 days...");
+            var attendances = new List<Attendance>();
+            var rand = new Random();
             
-            while (currentDate <= endDate)
+            // Create attendance records for all employees for the past 30 days
+            foreach (var employee in employees)
             {
-                // Check if it's a holiday
-                bool isHoliday = holidays.Any(h => h.Date.Date == currentDate.Date && h.EntryType == CalendarEntryType.Holiday);
+                var workSchedule = employee.WorkScheduleId.HasValue 
+                    ? workSchedules.First(ws => ws.Id == employee.WorkScheduleId.Value) 
+                    : workSchedules.First(ws => ws.DepartmentId == employee.DepartmentId);
                 
-                // Check if it's a weekend
-                bool isWeekend = !workSchedule.IsWorkingDay(currentDate.DayOfWeek);
-                
-                // If weekend or holiday, create a special record and continue
-                if (isWeekend || isHoliday)
+                // For each day in the past 30 days
+                for (int day = -30; day <= 0; day++)
                 {
-                    var attendanceCode = isHoliday ? "H" : "W"; // H for Holiday, W for Weekend
+                    var date = today.AddDays(day);
                     
-                    var specialAttendance = new Attendance
+                    // Skip weekends based on work schedule
+                    if (!workSchedule.IsWorkingDay(date.DayOfWeek))
                     {
-                        EmployeeId = employeeId,
-                        Date = currentDate,
-                        Notes = isHoliday ? "Holiday" : "Weekend",
-                        AttendanceCode = attendanceCode,
-                        IsComplete = true
-                    };
-                    
-                    context.Attendances.Add(specialAttendance);
-                    currentDate = currentDate.AddDays(1);
-                    continue;
-                }
-                
-                // For working days, randomize attendance status
-                double rand = random.NextDouble();
-                
-                // Create attendance record
-                var attendance = new Attendance
-                {
-                    EmployeeId = employeeId,
-                    Date = currentDate,
-                    Notes = "",
-                    IsComplete = true
-                };
-                
-                // Set standard start and end times
-                var standardStartTime = new DateTime(
-                    currentDate.Year, currentDate.Month, currentDate.Day,
-                    workSchedule.StartTime.Hours, workSchedule.StartTime.Minutes, 0
-                );
-                
-                var standardEndTime = new DateTime(
-                    currentDate.Year, currentDate.Month, currentDate.Day,
-                    workSchedule.EndTime.Hours, workSchedule.EndTime.Minutes, 0
-                );
-                
-                // Handle night shift that crosses midnight
-                if (workSchedule.StartTime > workSchedule.EndTime)
-                {
-                    standardEndTime = standardEndTime.AddDays(1);
-                }
-                
-                // Determine attendance status
-                if (rand < absentFrequency)
-                {
-                    // Absent - no check-in/check-out times
-                    attendance.Notes = "Absent";
-                    attendance.AttendanceCode = "A"; // A for Absent
-                }
-                else
-                {
-                    // Determine if early arrival
-                    bool isEarlyArrival = random.NextDouble() < earlyArrivalFrequency;
-                    
-                    // Determine if late arrival
-                    bool isLateArrival = !isEarlyArrival && random.NextDouble() < lateArrivalFrequency;
-                    
-                    // Determine if early departure
-                    bool isEarlyDeparture = random.NextDouble() < earlyDepartureFrequency;
-                    
-                    // Determine if overtime
-                    bool isOvertime = !isEarlyDeparture && random.NextDouble() < overtimeFrequency;
-                    
-                    string attendanceCode = "P"; // Default: P for Present
-                    
-                    // Handle check-in time
-                    if (isEarlyArrival)
-                    {
-                        int earlyMinutes = random.Next(15, 31);
-                        attendance.CheckInTime = standardStartTime.AddMinutes(-earlyMinutes);
-                        attendance.IsEarlyArrival = true;
-                        attendance.EarlyArrivalMinutes = TimeSpan.FromMinutes(earlyMinutes);
-                        attendance.Notes = "Early Arrival";
-                        attendanceCode = "EA"; // EA for Early Arrival
-                    }
-                    else if (isLateArrival)
-                    {
-                        int lateMinutes = random.Next(5, 31);
-                        attendance.CheckInTime = standardStartTime.AddMinutes(lateMinutes);
-                        attendance.IsLateArrival = true;
-                        attendance.LateMinutes = TimeSpan.FromMinutes(lateMinutes);
-                        attendance.Notes = "Late Arrival";
-                        attendanceCode = "L"; // L for Late
-                    }
-                    else
-                    {
-                        // Regular arrival (on time)
-                        int minuteVariation = random.Next(-5, 6);
-                        attendance.CheckInTime = standardStartTime.AddMinutes(minuteVariation);
+                        continue;
                     }
                     
-                    // Handle check-out time
-                    if (isEarlyDeparture)
+                    // Skip holidays
+                    if (holidays.Any(h => h.Date.Date == date.Date && h.EntryType == CalendarEntryType.Holiday))
                     {
-                        int earlyMinutes = random.Next(10, 61);
-                        attendance.CheckOutTime = standardEndTime.AddMinutes(-earlyMinutes);
-                        attendance.IsEarlyDeparture = true;
-                        attendance.EarlyDepartureMinutes = TimeSpan.FromMinutes(earlyMinutes);
-                        attendance.Notes = string.IsNullOrEmpty(attendance.Notes) ? "Early Departure" : attendance.Notes + " & Early Departure";
-                        attendanceCode = "E"; // E for Early Departure
+                        continue;
                     }
-                    else if (isOvertime)
+                    
+                    // Check if it's a short day
+                    bool isShortDay = holidays.Any(h => h.Date.Date == date.Date && h.EntryType == CalendarEntryType.ShortDay);
+                    
+                    // Determine if this is a flexible schedule day
+                    bool isFlexibleSchedule = workSchedule.IsFlexibleSchedule || employee.IsFlexibleHours;
+                    
+                    // Determine start and end times
+                    DateTime? checkInTime = null;
+                    DateTime? checkOutTime = null;
+                    TimeSpan? workDuration = null;
+                    bool isComplete = true;
+                    bool isLateArrival = false;
+                    bool isEarlyDeparture = false;
+                    bool isOvertime = false;
+                    bool isEarlyArrival = false;
+                    TimeSpan? lateMinutes = null;
+                    TimeSpan? earlyDepartureMinutes = null;
+                    TimeSpan? overtimeMinutes = null;
+                    TimeSpan? earlyArrivalMinutes = null;
+                    
+                    double expectedWorkHours = isFlexibleSchedule 
+                        ? employee.RequiredWorkHoursPerDay 
+                        : (isShortDay ? (workSchedule.CalculateExpectedWorkHours(date) * 0.6) : workSchedule.CalculateExpectedWorkHours(date));
+                    
+                    // Occasionally skip some attendance records (absence)
+                    if (rand.Next(100) < 3) // 3% chance of absence
                     {
-                        int overtimeMinutes = random.Next(15, 121);
-                        attendance.CheckOutTime = standardEndTime.AddMinutes(overtimeMinutes);
-                        attendance.IsOvertime = true;
-                        attendance.OvertimeMinutes = TimeSpan.FromMinutes(overtimeMinutes);
-                        attendance.Notes = string.IsNullOrEmpty(attendance.Notes) ? "Overtime" : attendance.Notes + " & Overtime";
-                        attendanceCode = "O"; // O for Overtime
-                    }
-                    else
-                    {
-                        // Regular departure
-                        int minuteVariation = random.Next(-5, 6);
-                        attendance.CheckOutTime = standardEndTime.AddMinutes(minuteVariation);
-                        
-                        if (string.IsNullOrEmpty(attendance.Notes))
+                        // Create an absent record
+                        attendances.Add(new Attendance
                         {
-                            attendance.Notes = "Present";
+                            EmployeeId = employee.Id,
+                            Date = date,
+                            CheckInTime = null,
+                            CheckOutTime = null,
+                            IsComplete = false,
+                            Notes = "Absent",
+                            IsFlexibleSchedule = isFlexibleSchedule,
+                            ExpectedWorkHours = expectedWorkHours,
+                            AttendanceCode = "A" // Absent
+                        });
+                        continue;
+                    }
+                    
+                    // For flexible schedules
+                    if (isFlexibleSchedule)
+                    {
+                        // Random check-in between 7 AM and 11 AM
+                        int checkInHour = rand.Next(7, 11);
+                        int checkInMinute = rand.Next(0, 60);
+                        checkInTime = date.Date.AddHours(checkInHour).AddMinutes(checkInMinute);
+                        
+                        // Calculate work hours (between 80% and 120% of required hours)
+                        double actualWorkHours = employee.RequiredWorkHoursPerDay * (0.8 + (rand.NextDouble() * 0.4));
+                        
+                        // Occasionally create incomplete records for today
+                        if (date.Date == today.Date && rand.Next(100) < 30)
+                        {
+                            // Only check-in time, still at work
+                            checkOutTime = null;
+                            isComplete = false;
+                            workDuration = null;
+                        }
+                        else
+                        {
+                            // Complete day
+                            checkOutTime = checkInTime.Value.AddHours(actualWorkHours);
+                            workDuration = checkOutTime.Value - checkInTime.Value;
+                            
+                            // Determine if overtime or undertime
+                            if (actualWorkHours > employee.RequiredWorkHoursPerDay * 1.05)
+                            {
+                                isOvertime = true;
+                                overtimeMinutes = TimeSpan.FromHours(actualWorkHours - employee.RequiredWorkHoursPerDay);
+                            }
+                            else if (actualWorkHours < employee.RequiredWorkHoursPerDay * 0.95)
+                            {
+                                isEarlyDeparture = true;
+                                earlyDepartureMinutes = TimeSpan.FromHours(employee.RequiredWorkHoursPerDay - actualWorkHours);
+                            }
+                        }
+                    }
+                    else // For fixed schedules
+                    {
+                        // Get schedule start/end times
+                        var scheduleStartTime = workSchedule.StartTime;
+                        var scheduleEndTime = workSchedule.EndTime;
+                        
+                        // If it's a short day, adjust end time
+                        if (isShortDay)
+                        {
+                            scheduleEndTime = scheduleStartTime.Add(TimeSpan.FromHours(
+                                (scheduleEndTime - scheduleStartTime).TotalHours * 0.6)); // 60% of normal day
+                        }
+                        
+                        // Random variance in arrival time (-20 to +20 minutes from start time)
+                        int arrivalVariance = rand.Next(-20, 21);
+                        checkInTime = date.Date.Add(scheduleStartTime).AddMinutes(arrivalVariance);
+                        
+                        // Handle late arrival
+                        if (arrivalVariance > workSchedule.FlexTimeAllowanceMinutes)
+                        {
+                            isLateArrival = true;
+                            lateMinutes = TimeSpan.FromMinutes(arrivalVariance - workSchedule.FlexTimeAllowanceMinutes);
+                        }
+                        
+                        // Handle early arrival
+                        if (arrivalVariance < -workSchedule.FlexTimeAllowanceMinutes)
+                        {
+                            isEarlyArrival = true;
+                            earlyArrivalMinutes = TimeSpan.FromMinutes(-arrivalVariance - workSchedule.FlexTimeAllowanceMinutes);
+                        }
+                        
+                        // Occasionally create incomplete records for today
+                        if (date.Date == today.Date && rand.Next(100) < 30)
+                        {
+                            // Only check-in time, still at work
+                            checkOutTime = null;
+                            isComplete = false;
+                            workDuration = null;
+                        }
+                        else
+                        {
+                            // Random variance in departure time (-20 to +40 minutes from end time)
+                            int departureVariance = rand.Next(-20, 41);
+                            checkOutTime = date.Date.Add(scheduleEndTime).AddMinutes(departureVariance);
+                            
+                            // Handle early departure
+                            if (departureVariance < -workSchedule.FlexTimeAllowanceMinutes)
+                            {
+                                isEarlyDeparture = true;
+                                earlyDepartureMinutes = TimeSpan.FromMinutes(-departureVariance - workSchedule.FlexTimeAllowanceMinutes);
+                            }
+                            
+                            // Handle overtime
+                            if (departureVariance > workSchedule.FlexTimeAllowanceMinutes)
+                            {
+                                isOvertime = true;
+                                overtimeMinutes = TimeSpan.FromMinutes(departureVariance - workSchedule.FlexTimeAllowanceMinutes);
+                            }
+                            
+                            workDuration = checkOutTime.Value - checkInTime.Value;
                         }
                     }
                     
-                    // Calculate work duration
-                    if (attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue)
-                    {
-                        attendance.WorkDuration = attendance.CheckOutTime.Value - attendance.CheckInTime.Value;
-                    }
+                    // Determine attendance code
+                    string attendanceCode = DetermineAttendanceCode(isLateArrival, isEarlyDeparture, isOvertime, isEarlyArrival, isComplete);
                     
-                    attendance.AttendanceCode = attendanceCode;
+                    // Create the attendance record
+                    attendances.Add(new Attendance
+                    {
+                        EmployeeId = employee.Id,
+                        Date = date,
+                        CheckInTime = checkInTime,
+                        CheckOutTime = checkOutTime,
+                        WorkDuration = workDuration,
+                        IsComplete = isComplete,
+                        Notes = GenerateRandomNote(attendanceCode),
+                        IsLateArrival = isLateArrival,
+                        IsEarlyDeparture = isEarlyDeparture,
+                        IsOvertime = isOvertime,
+                        IsEarlyArrival = isEarlyArrival,
+                        LateMinutes = lateMinutes,
+                        EarlyDepartureMinutes = earlyDepartureMinutes,
+                        OvertimeMinutes = overtimeMinutes,
+                        EarlyArrivalMinutes = earlyArrivalMinutes,
+                        IsFlexibleSchedule = isFlexibleSchedule,
+                        ExpectedWorkHours = expectedWorkHours,
+                        AttendanceCode = attendanceCode
+                    });
                 }
-                
-                // Add to context
-                context.Attendances.Add(attendance);
-                
-                // Move to next day
-                currentDate = currentDate.AddDays(1);
             }
             
-            // Save all records
+            context.Attendances.AddRange(attendances);
             context.SaveChanges();
+        }
+        
+        // Helper method to determine attendance code
+        private static string DetermineAttendanceCode(bool isLateArrival, bool isEarlyDeparture, bool isOvertime, bool isEarlyArrival, bool isComplete)
+        {
+            if (!isComplete)
+                return "W"; // Working (checked in, not checked out)
+            if (isLateArrival && isEarlyDeparture)
+                return "LE"; // Late and Early Departure
+            if (isLateArrival)
+                return "L"; // Late
+            if (isEarlyDeparture)
+                return "E"; // Early Departure
+            if (isOvertime)
+                return "O"; // Overtime
+            if (isEarlyArrival)
+                return "EA"; // Early Arrival
+            return "P"; // Present (normal)
+        }
+        
+        // Helper method to generate random note
+        private static string GenerateRandomNote(string attendanceCode)
+        {
+            var rand = new Random();
+            
+            switch (attendanceCode)
+            {
+                case "L":
+                    var lateReasons = new[] { "Traffic delay", "Public transport issues", "Personal emergency", "Family matter", "" };
+                    return lateReasons[rand.Next(lateReasons.Length)];
+                    
+                case "E":
+                    var earlyReasons = new[] { "Doctor appointment", "Family pickup", "Personal errand", "Feeling unwell", "" };
+                    return earlyReasons[rand.Next(earlyReasons.Length)];
+                    
+                case "O":
+                    var overtimeReasons = new[] { "Project deadline", "Extra workload", "Covering for colleague", "Meeting overrun", "" };
+                    return overtimeReasons[rand.Next(overtimeReasons.Length)];
+                
+                case "A":
+                    var absentReasons = new[] { "Sick leave", "Family emergency", "Personal leave", "Approved absence" };
+                    return absentReasons[rand.Next(absentReasons.Length)];
+                
+                default:
+                    return "";
+            }
         }
         
         // Legacy method for backward compatibility
@@ -526,4 +786,4 @@ namespace AttandenceDesktop
             ClearAndCreateSampleData();
         }
     }
-} 
+}

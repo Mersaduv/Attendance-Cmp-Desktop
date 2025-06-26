@@ -232,23 +232,29 @@ namespace AttandenceDesktop.ViewModels
         private bool CanGoToNextPage() => CurrentPage < TotalPages && TotalPages > 1;
         private bool CanGoToPreviousPage() => CurrentPage > 1;
         
-        private void NextPage()
+        private async void NextPage()
         {
             if (CurrentPage < TotalPages)
             {
                 CurrentPage++;
                 ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
                 ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+                
+                // Ensure complete data is loaded for the new page
+                await UpdateDisplayedItemsAsync();
             }
         }
         
-        private void PreviousPage()
+        private async void PreviousPage()
         {
             if (CurrentPage > 1)
             {
                 CurrentPage--;
                 ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
                 ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+                
+                // Ensure complete data is loaded for the new page
+                await UpdateDisplayedItemsAsync();
             }
         }
         
@@ -317,77 +323,45 @@ namespace AttandenceDesktop.ViewModels
             
             try
             {
-                List<AttendanceReportItem> reportItems = new();
+                // Get complete attendance data for the selected entity
+                _allReportItems = await GetCompleteDataAsync();
                 
-                // Based on the report type, call the appropriate service method
-                switch ((ReportTypeEnum)ReportTypeIndex)
-                {
-                    case ReportTypeEnum.Employee:
-                        if (SelectedEmployeeId.HasValue)
-                        {
-                            Program.LogMessage($"ReportViewModel: Generating employee report for employee ID: {SelectedEmployeeId}");
-                            reportItems = await _reportService.GenerateEmployeeAttendanceReportAsync(
-                                SelectedEmployeeId.Value, StartDate, EndDate);
-                            Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} records for employee");
-                        }
-                        else
-                        {
-                            Program.LogMessage("ReportViewModel: Error - No employee selected for employee report");
-                        }
-                        break;
-                        
-                    case ReportTypeEnum.Department:
-                        if (SelectedDepartmentId.HasValue)
-                        {
-                            Program.LogMessage($"ReportViewModel: Generating department report for department ID: {SelectedDepartmentId}");
-                            reportItems = await _reportService.GenerateDepartmentAttendanceReportAsync(
-                                SelectedDepartmentId.Value, StartDate, EndDate);
-                            Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} records for department");
-                        }
-                        else
-                        {
-                            Program.LogMessage("ReportViewModel: Error - No department selected for department report");
-                        }
-                        break;
-                        
-                    case ReportTypeEnum.Company:
-                        Program.LogMessage("ReportViewModel: Generating company-wide report");
-                        reportItems = await _reportService.GenerateCompanyAttendanceReportAsync(
-                            StartDate, EndDate);
-                        Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} records for company report");
-                        break;
-                }
-                
-                // Calculate statistics
+                // Calculate statistics based on all data
                 Program.LogMessage("ReportViewModel: Calculating report statistics");
-                _allReportItems = reportItems;
-                _statistics = _reportService.GetReportStatistics(reportItems);
+                _statistics = _reportService.GetReportStatistics(_allReportItems);
                 
-                // Calculate aggregate minutes
-                _totalLateMinutes = TimeSpan.Zero;
-                _totalEarlyDepartureMinutes = TimeSpan.Zero;
-                _totalOvertimeMinutes = TimeSpan.Zero;
-                
-                foreach (var item in reportItems)
-                {
-                    if (item.LateMinutes.HasValue)
-                        _totalLateMinutes += item.LateMinutes.Value;
-                    if (item.EarlyDepartureMinutes.HasValue)
-                        _totalEarlyDepartureMinutes += item.EarlyDepartureMinutes.Value;
-                    if (item.OvertimeMinutes.HasValue)
-                        _totalOvertimeMinutes += item.OvertimeMinutes.Value;
-                }
+                // Calculate aggregate minutes across all data
+                var timeValues = await GetCompleteTimeValuesAsync();
+                _totalLateMinutes = timeValues["LateMinutes"];
+                _totalEarlyDepartureMinutes = timeValues["EarlyDepartureMinutes"];
+                _totalOvertimeMinutes = timeValues["OvertimeMinutes"];
                 
                 Program.LogMessage($"ReportViewModel: Calculated time totals - Late: {_totalLateMinutes}, Early Departure: {_totalEarlyDepartureMinutes}, Overtime: {_totalOvertimeMinutes}");
                 
                 // Calculate pagination
-                int itemCount = reportItems.Count;
+                int itemCount = _allReportItems.Count;
                 _hasSummaryPage = itemCount > 0 ? true : false;
                 
-                _totalPages = (itemCount / _pageSize) + (_hasSummaryPage ? 2 : 1);
-                if (itemCount % _pageSize > 0)
-                    _totalPages--;
+                // Fix the pagination calculation
+                if (itemCount == 0)
+                {
+                    _totalPages = 1;
+                }
+                else
+                {
+                    // Calculate regular pages (full page size items per page)
+                    int regularPages = (itemCount / _pageSize);
                     
+                    // Add an extra page if there are remaining items
+                    if (itemCount % _pageSize > 0)
+                    {
+                        regularPages++;
+                    }
+                    
+                    // Add summary page if needed
+                    _totalPages = _hasSummaryPage ? regularPages + 1 : regularPages;
+                }
+                
                 Program.LogMessage($"ReportViewModel: Pagination setup - Items: {itemCount}, Pages: {_totalPages}");
                 
                 // Update UI bindings
@@ -401,8 +375,12 @@ namespace AttandenceDesktop.ViewModels
                 OnPropertyChanged(nameof(TotalOvertimeMinutes));
                 OnPropertyChanged(nameof(TotalOvertimeTime));
                 
+                // Force command can-execute refresh
+                ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
+                ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+                
                 // Update displayed items for the current page
-                UpdateDisplayedItems();
+                await UpdateDisplayedItemsAsync();
                 Program.LogMessage("ReportViewModel: Report generation completed successfully");
             }
             catch (Exception ex)
@@ -417,6 +395,120 @@ namespace AttandenceDesktop.ViewModels
         }
         
         private void UpdateDisplayedItems()
+        {
+            // Use the async version by calling it and not waiting
+            _ = UpdateDisplayedItemsAsync();
+        }
+        
+        private async Task ExportReportAsync()
+        {
+            if (_allReportItems.Count == 0)
+            {
+                // Show error message
+                return;
+            }
+            
+            // Implementation for exporting to Excel or PDF would go here
+            await Task.Delay(100); // Placeholder
+        }
+        
+        // Get complete attendance data for an entity (employee/department/company) across all date range
+        private async Task<List<AttendanceReportItem>> GetCompleteDataAsync()
+        {
+            List<AttendanceReportItem> reportItems = new();
+            
+            try
+            {
+                // Based on the report type, call the appropriate service method
+                switch ((ReportTypeEnum)ReportTypeIndex)
+                {
+                    case ReportTypeEnum.Employee:
+                        if (SelectedEmployeeId.HasValue)
+                        {
+                            Program.LogMessage($"ReportViewModel: Fetching complete data for employee ID: {SelectedEmployeeId}");
+                            reportItems = await _reportService.GenerateEmployeeAttendanceReportAsync(
+                                SelectedEmployeeId.Value, StartDate, EndDate);
+                            Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} complete records for employee");
+                        }
+                        break;
+                        
+                    case ReportTypeEnum.Department:
+                        if (SelectedDepartmentId.HasValue)
+                        {
+                            Program.LogMessage($"ReportViewModel: Fetching complete data for department ID: {SelectedDepartmentId}");
+                            reportItems = await _reportService.GenerateDepartmentAttendanceReportAsync(
+                                SelectedDepartmentId.Value, StartDate, EndDate);
+                            Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} complete records for department");
+                        }
+                        break;
+                        
+                    case ReportTypeEnum.Company:
+                        Program.LogMessage("ReportViewModel: Fetching complete company-wide data");
+                        reportItems = await _reportService.GenerateCompanyAttendanceReportAsync(
+                            StartDate, EndDate);
+                        Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} complete records for company report");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.LogMessage($"ReportViewModel: Error fetching complete data - {ex.Message}");
+            }
+            
+            return reportItems;
+        }
+        
+        // Calculate complete statistics across all date range and pages
+        public async Task<AttendanceReportStatistics> GetCompleteStatisticsAsync()
+        {
+            // If we already have complete data, use it
+            if (_allReportItems.Count > 0)
+            {
+                return _reportService.GetReportStatistics(_allReportItems);
+            }
+            
+            // Otherwise, fetch all data and calculate statistics
+            var completeData = await GetCompleteDataAsync();
+            return _reportService.GetReportStatistics(completeData);
+        }
+        
+        // Calculate aggregate time values across all dates
+        public async Task<Dictionary<string, TimeSpan>> GetCompleteTimeValuesAsync()
+        {
+            var result = new Dictionary<string, TimeSpan>
+            {
+                { "LateMinutes", TimeSpan.Zero },
+                { "EarlyDepartureMinutes", TimeSpan.Zero },
+                { "OvertimeMinutes", TimeSpan.Zero }
+            };
+            
+            // If we already have complete data, use it
+            List<AttendanceReportItem> dataToProcess;
+            if (_allReportItems.Count > 0)
+            {
+                dataToProcess = _allReportItems;
+            }
+            else
+            {
+                // Otherwise, fetch all data
+                dataToProcess = await GetCompleteDataAsync();
+            }
+            
+            // Calculate totals
+            foreach (var item in dataToProcess)
+            {
+                if (item.LateMinutes.HasValue)
+                    result["LateMinutes"] += item.LateMinutes.Value;
+                if (item.EarlyDepartureMinutes.HasValue)
+                    result["EarlyDepartureMinutes"] += item.EarlyDepartureMinutes.Value;
+                if (item.OvertimeMinutes.HasValue)
+                    result["OvertimeMinutes"] += item.OvertimeMinutes.Value;
+            }
+            
+            return result;
+        }
+        
+        private async Task UpdateDisplayedItemsAsync()
         {
             Program.LogMessage($"ReportViewModel: Updating displayed items for page {CurrentPage} of {TotalPages}");
             
@@ -434,6 +526,10 @@ namespace AttandenceDesktop.ViewModels
                 Program.LogMessage("ReportViewModel: Displaying summary page");
                 // This is the summary page - we'll just leave it empty for now
                 // The statistics are shown separately in the UI
+                
+                // Make sure Next/Previous commands are updated
+                ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
+                ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
                 return;
             }
             
@@ -459,19 +555,40 @@ namespace AttandenceDesktop.ViewModels
                 ReportItems.Add(_allReportItems[i]);
             }
             
+            // Make sure Next/Previous commands are updated
+            ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
+            ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+            
             Program.LogMessage($"ReportViewModel: Added {ReportItems.Count} items to display");
         }
         
-        private async Task ExportReportAsync()
+        // Call these methods from the View to ensure complete statistics
+        public async Task RefreshStatisticsAsync()
         {
-            if (_allReportItems.Count == 0)
+            try
             {
-                // Show error message
-                return;
+                // Calculate statistics from all data, not just current page
+                _statistics = await GetCompleteStatisticsAsync();
+                
+                // Update time values
+                var timeValues = await GetCompleteTimeValuesAsync();
+                _totalLateMinutes = timeValues["LateMinutes"];
+                _totalEarlyDepartureMinutes = timeValues["EarlyDepartureMinutes"];
+                _totalOvertimeMinutes = timeValues["OvertimeMinutes"];
+                
+                // Notify properties
+                OnPropertyChanged(nameof(Statistics));
+                OnPropertyChanged(nameof(TotalLateMinutes));
+                OnPropertyChanged(nameof(TotalLateTime));
+                OnPropertyChanged(nameof(TotalEarlyDepartureMinutes));
+                OnPropertyChanged(nameof(TotalEarlyDepartureTime));
+                OnPropertyChanged(nameof(TotalOvertimeMinutes));
+                OnPropertyChanged(nameof(TotalOvertimeTime));
             }
-            
-            // Implementation for exporting to Excel or PDF would go here
-            await Task.Delay(100); // Placeholder
+            catch (Exception ex)
+            {
+                Program.LogMessage($"ReportViewModel: Error refreshing statistics - {ex.Message}");
+            }
         }
     }
 } 

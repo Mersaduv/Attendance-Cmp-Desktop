@@ -33,6 +33,12 @@ namespace AttandenceDesktop
                     bool earlyArrivalExists = CheckColumnExists(connection, "Attendances", "IsEarlyArrival");
                     bool earlyArrivalMinutesExists = CheckColumnExists(connection, "Attendances", "EarlyArrivalMinutes");
                     bool attendanceCodeExists = CheckColumnExists(connection, "Attendances", "AttendanceCode");
+                    bool isFlexibleScheduleExists = CheckColumnExists(connection, "WorkSchedules", "IsFlexibleSchedule");
+                    bool totalWorkHoursExists = CheckColumnExists(connection, "WorkSchedules", "TotalWorkHours");
+                    bool attendanceIsFlexibleScheduleExists = CheckColumnExists(connection, "Attendances", "IsFlexibleSchedule");
+                    bool attendanceExpectedWorkHoursExists = CheckColumnExists(connection, "Attendances", "ExpectedWorkHours");
+                    bool employeeIsFlexibleHoursExists = CheckColumnExists(connection, "Employees", "IsFlexibleHours");
+                    bool employeeRequiredWorkHoursPerDayExists = CheckColumnExists(connection, "Employees", "RequiredWorkHoursPerDay");
                     
                     // Add columns if they don't exist
                     if (!earlyArrivalExists)
@@ -61,6 +67,69 @@ namespace AttandenceDesktop
                         using (var command = connection.CreateCommand())
                         {
                             command.CommandText = "ALTER TABLE Attendances ADD COLUMN AttendanceCode TEXT DEFAULT ''";
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    // Add new columns for flexible schedules to WorkSchedules table
+                    if (!isFlexibleScheduleExists)
+                    {
+                        Trace.WriteLine("Adding IsFlexibleSchedule column to WorkSchedules table...");
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText = "ALTER TABLE WorkSchedules ADD COLUMN IsFlexibleSchedule INTEGER NOT NULL DEFAULT 0";
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    if (!totalWorkHoursExists)
+                    {
+                        Trace.WriteLine("Adding TotalWorkHours column to WorkSchedules table...");
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText = "ALTER TABLE WorkSchedules ADD COLUMN TotalWorkHours REAL NOT NULL DEFAULT 8.0";
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    // Add new columns for flexible schedules to Attendances table
+                    if (!attendanceIsFlexibleScheduleExists)
+                    {
+                        Trace.WriteLine("Adding IsFlexibleSchedule column to Attendances table...");
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText = "ALTER TABLE Attendances ADD COLUMN IsFlexibleSchedule INTEGER NOT NULL DEFAULT 0";
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    if (!attendanceExpectedWorkHoursExists)
+                    {
+                        Trace.WriteLine("Adding ExpectedWorkHours column to Attendances table...");
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText = "ALTER TABLE Attendances ADD COLUMN ExpectedWorkHours REAL NOT NULL DEFAULT 0";
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    // Add new columns for flexible hours to Employees table
+                    if (!employeeIsFlexibleHoursExists)
+                    {
+                        Trace.WriteLine("Adding IsFlexibleHours column to Employees table...");
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText = "ALTER TABLE Employees ADD COLUMN IsFlexibleHours INTEGER NOT NULL DEFAULT 0";
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    
+                    if (!employeeRequiredWorkHoursPerDayExists)
+                    {
+                        Trace.WriteLine("Adding RequiredWorkHoursPerDay column to Employees table...");
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText = "ALTER TABLE Employees ADD COLUMN RequiredWorkHoursPerDay REAL NOT NULL DEFAULT 8.0";
                             command.ExecuteNonQuery();
                         }
                     }

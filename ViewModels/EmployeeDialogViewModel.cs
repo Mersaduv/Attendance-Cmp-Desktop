@@ -19,6 +19,8 @@ namespace AttandenceDesktop.ViewModels
         private DateTime _hireDate = DateTime.Today;
         private List<Department> _availableDepartments;
         private Department _selectedDepartment;
+        private bool _isFlexibleHours;
+        private double _requiredWorkHoursPerDay = 8.0;
         
         public int Id
         {
@@ -89,6 +91,19 @@ namespace AttandenceDesktop.ViewModels
             set => SetProperty(ref _hireDate, value, true);
         }
         
+        public bool IsFlexibleHours
+        {
+            get => _isFlexibleHours;
+            set => SetProperty(ref _isFlexibleHours, value);
+        }
+        
+        [Range(1, 24, ErrorMessage = "Work hours must be between 1 and 24")]
+        public double RequiredWorkHoursPerDay
+        {
+            get => _requiredWorkHoursPerDay;
+            set => SetProperty(ref _requiredWorkHoursPerDay, value, true);
+        }
+        
         public List<Department> AvailableDepartments
         {
             get => _availableDepartments;
@@ -124,7 +139,9 @@ namespace AttandenceDesktop.ViewModels
                 Position = Position,
                 EmployeeCode = EmployeeCode,
                 DepartmentId = DepartmentId,
-                HireDate = HireDate
+                HireDate = HireDate,
+                IsFlexibleHours = IsFlexibleHours,
+                RequiredWorkHoursPerDay = RequiredWorkHoursPerDay
             };
         }
         
@@ -141,6 +158,8 @@ namespace AttandenceDesktop.ViewModels
             EmployeeCode = employee.EmployeeCode;
             DepartmentId = employee.DepartmentId;
             HireDate = employee.HireDate;
+            IsFlexibleHours = employee.IsFlexibleHours;
+            RequiredWorkHoursPerDay = employee.RequiredWorkHoursPerDay;
         }
     }
 } 

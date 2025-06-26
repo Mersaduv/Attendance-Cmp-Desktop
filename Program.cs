@@ -22,7 +22,7 @@ sealed class Program
     {
         // Setup logging
         string logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory);
-        string logPath = Path.Combine(logDirectory, "app.log");
+        string logPath = Path.Combine(logDirectory, "app_log.txt");
         
         // Ensure log directory exists
         Directory.CreateDirectory(logDirectory);
@@ -33,6 +33,78 @@ sealed class Program
         
         try
         {
+            // Direct database clear mode - special argument to clear database and exit
+            if (args.Length > 0 && args[0].Equals("--direct-clear-database", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("====== DATABASE CLEAR UTILITY ======");
+                Console.WriteLine("This utility will PERMANENTLY DELETE all data from the database.");
+                Console.WriteLine("This includes all departments, employees, work schedules, and attendance records.");
+                Console.WriteLine("The database schema will be preserved.");
+                Console.WriteLine();
+                Console.Write("Are you absolutely sure you want to proceed? (yes/no): ");
+                string response = Console.ReadLine()?.ToLower() ?? "no";
+                
+                if (response == "yes")
+                {
+                    try
+                    {
+                        LogMessage("Direct database clear requested and confirmed");
+                        
+                        // Create database context directly
+                        var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+                        var dbPath = Path.Combine(AppContext.BaseDirectory, "TimeAttendance.db");
+                        var connectionString = $"Data Source={dbPath}";
+                        optionsBuilder.UseSqlite(connectionString);
+                        
+                        using (var context = new ApplicationDbContext(optionsBuilder.Options))
+                        {
+                            // Clear each table in sequence
+                            Console.WriteLine("\nRemoving attendance records...");
+                            context.Attendances.RemoveRange(context.Attendances.ToList());
+                            context.SaveChanges();
+                            Console.WriteLine($"  ✓ {context.Attendances.Count()} attendance records remaining");
+                            
+                            Console.WriteLine("Removing employees...");
+                            context.Employees.RemoveRange(context.Employees.ToList());
+                            context.SaveChanges();
+                            Console.WriteLine($"  ✓ {context.Employees.Count()} employees remaining");
+                            
+                            Console.WriteLine("Removing work schedules...");
+                            context.WorkSchedules.RemoveRange(context.WorkSchedules.ToList());
+                            context.SaveChanges();
+                            Console.WriteLine($"  ✓ {context.WorkSchedules.Count()} work schedules remaining");
+                            
+                            Console.WriteLine("Removing work calendars...");
+                            context.WorkCalendars.RemoveRange(context.WorkCalendars.ToList());
+                            context.SaveChanges();
+                            Console.WriteLine($"  ✓ {context.WorkCalendars.Count()} work calendars remaining");
+                            
+                            Console.WriteLine("Removing departments...");
+                            context.Departments.RemoveRange(context.Departments.ToList());
+                            context.SaveChanges();
+                            Console.WriteLine($"  ✓ {context.Departments.Count()} departments remaining");
+                            
+                            Console.WriteLine("\n✅ Database cleared successfully!");
+                            LogMessage("Database cleared successfully through direct utility");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"\n❌ ERROR: {ex.Message}");
+                        LogMessage($"Error in direct database clear: {ex.Message}\n{ex.StackTrace}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Operation cancelled.");
+                    LogMessage("User cancelled the direct database clear operation");
+                }
+                
+                Console.WriteLine("\nPress any key to exit...");
+                Console.ReadKey();
+                return;
+            }
+            
             // Check for debug direct seed mode - Special argument that directly calls seed method and exits
             if (args.Length > 0 && args[0].Equals("--debug-direct-seed", StringComparison.OrdinalIgnoreCase))
             {
@@ -86,6 +158,52 @@ sealed class Program
                     ClearAndReseedAttendanceData();
                     Console.WriteLine("Attendance data cleared and reseeded successfully. Press any key to start the application.");
                     Console.ReadKey();
+                }
+                else if (args[0].Equals("--clear-all-data", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("Clearing all data from the database...");
+                    Console.WriteLine("WARNING: This will remove ALL departments, employees, schedules, and attendance records.");
+                    Console.Write("Do you want to continue? (y/n): ");
+                    string response = Console.ReadLine()?.ToLower() ?? "n";
+                    
+                    if (response == "y" || response == "yes")
+                    {
+                        LogMessage("User confirmed to clear all data from the database");
+                        ClearAllData();
+                        Console.WriteLine("All data has been cleared successfully.");
+                        Console.WriteLine("Press any key to start the application.");
+                        Console.ReadKey();
+                    }
+                    else
+                    {
+                        Console.WriteLine("Operation cancelled by user.");
+                        LogMessage("User cancelled the clear all data operation");
+                        Console.WriteLine("Press any key to start the application.");
+                        Console.ReadKey();
+                    }
+                }
+                else if (args[0].Equals("--create-sample-data", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("Creating comprehensive sample data including both flexible and fixed schedules...");
+                    Console.WriteLine("WARNING: This will CLEAR ALL existing data and create new sample data.");
+                    Console.Write("Do you want to continue? (y/n): ");
+                    string response = Console.ReadLine()?.ToLower() ?? "n";
+                    
+                    if (response == "y" || response == "yes")
+                    {
+                        LogMessage("User confirmed to create comprehensive sample data");
+                        SeedAttendanceData.ClearAndCreateSampleData();
+                        Console.WriteLine("Comprehensive sample data created successfully.");
+                        Console.WriteLine("Press any key to start the application.");
+                        Console.ReadKey();
+                    }
+                    else
+                    {
+                        Console.WriteLine("Operation cancelled by user.");
+                        LogMessage("User cancelled the create sample data operation");
+                        Console.WriteLine("Press any key to start the application.");
+                        Console.ReadKey();
+                    }
                 }
             }
 
@@ -164,7 +282,8 @@ sealed class Program
                 new Models.Department { Name = "IT" },
                 new Models.Department { Name = "Finance" },
                 new Models.Department { Name = "Operations" },
-                new Models.Department { Name = "Marketing" }
+                new Models.Department { Name = "Marketing" },
+                new Models.Department { Name = "Remote Workers" }
             );
         }
         
@@ -176,8 +295,10 @@ sealed class Program
                 new Models.WorkSchedule
                 {
                     Name = "Standard 9-5",
+                    IsFlexibleSchedule = false,
                     StartTime = new TimeSpan(9, 0, 0),
                     EndTime = new TimeSpan(17, 0, 0),
+                    TotalWorkHours = 8.0,
                     IsWorkingDayMonday = true,
                     IsWorkingDayTuesday = true,
                     IsWorkingDayWednesday = true,
@@ -187,6 +308,27 @@ sealed class Program
                     IsWorkingDaySunday = false,
                     FlexTimeAllowanceMinutes = 15,
                     Description = "Standard work schedule from 9 AM to 5 PM, Monday to Friday"
+                }
+            );
+            
+            // Add a flexible schedule that only requires total hours
+            context.WorkSchedules.Add(
+                new Models.WorkSchedule
+                {
+                    Name = "Flexible Hours",
+                    IsFlexibleSchedule = true,
+                    StartTime = new TimeSpan(0, 0, 0), // Not used
+                    EndTime = new TimeSpan(0, 0, 0),   // Not used
+                    TotalWorkHours = 8.0,              // 8 hours total required
+                    IsWorkingDayMonday = true,
+                    IsWorkingDayTuesday = true,
+                    IsWorkingDayWednesday = true,
+                    IsWorkingDayThursday = true,
+                    IsWorkingDayFriday = true,
+                    IsWorkingDaySaturday = false,
+                    IsWorkingDaySunday = false,
+                    FlexTimeAllowanceMinutes = 0,      // No grace period for flexible schedules
+                    Description = "Flexible work schedule with 8 hours total per day, no specific start/end times"
                 }
             );
         }
@@ -204,6 +346,61 @@ sealed class Program
         catch (Exception ex)
         {
             LogMessage($"Error regenerating sample data: {ex}");
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Clears all data from the database without creating new sample data
+    /// </summary>
+    private static void ClearAllData()
+    {
+        try
+        {
+            LogMessage("Clearing all data from the database");
+            Console.WriteLine("Starting to clear database...");
+            
+            // Create a new database context
+            var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+            var dbPath = Path.Combine(AppContext.BaseDirectory, "TimeAttendance.db");
+            var connectionString = $"Data Source={dbPath}";
+            optionsBuilder.UseSqlite(connectionString);
+            
+            using (var context = new ApplicationDbContext(optionsBuilder.Options))
+            {
+                // Clear ALL existing data
+                Console.WriteLine("Removing all attendance records...");
+                context.Attendances.RemoveRange(context.Attendances.ToList());
+                context.SaveChanges();
+                Console.WriteLine($"  ✓ {context.Attendances.Count()} attendance records remaining");
+                
+                Console.WriteLine("Removing all employees...");
+                context.Employees.RemoveRange(context.Employees.ToList());
+                context.SaveChanges();
+                Console.WriteLine($"  ✓ {context.Employees.Count()} employees remaining");
+                
+                Console.WriteLine("Removing all work schedules...");
+                context.WorkSchedules.RemoveRange(context.WorkSchedules.ToList());
+                context.SaveChanges();
+                Console.WriteLine($"  ✓ {context.WorkSchedules.Count()} work schedules remaining");
+                
+                Console.WriteLine("Removing all work calendars...");
+                context.WorkCalendars.RemoveRange(context.WorkCalendars.ToList());
+                context.SaveChanges();
+                Console.WriteLine($"  ✓ {context.WorkCalendars.Count()} work calendars remaining");
+                
+                Console.WriteLine("Removing all departments...");
+                context.Departments.RemoveRange(context.Departments.ToList());
+                context.SaveChanges();
+                Console.WriteLine($"  ✓ {context.Departments.Count()} departments remaining");
+                
+                Console.WriteLine("\n✅ All data has been cleared successfully!");
+                LogMessage("All data has been cleared successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Error clearing data: {ex}");
             Console.WriteLine($"Error: {ex.Message}");
         }
     }

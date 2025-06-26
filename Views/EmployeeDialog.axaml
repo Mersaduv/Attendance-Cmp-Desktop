@@ -8,7 +8,7 @@
         x:Class="AttandenceDesktop.Views.EmployeeDialog"
         x:DataType="vm:EmployeeDialogViewModel"
         Title="{Binding WindowTitle}"
-        Width="650" Height="650"
+        Width="650" Height="700"
         WindowStartupLocation="CenterOwner">
 
     <Design.DataContext>
@@ -126,6 +126,30 @@
                     <StackPanel Grid.Column="1" Margin="8,0,0,0">
                         <TextBlock Text="Hire Date" Classes="label"/>
                         <DatePicker SelectedDate="{Binding HireDate, Converter={StaticResource DateTimeToDateTimeOffset}}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Grid>
+                
+                <!-- Fifth Row: Flexible Hours -->
+                <Grid Margin="0,15,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Work Schedule Type" Classes="label"/>
+                        <CheckBox Content="Flexible Hours (Total Hours Only)" IsChecked="{Binding IsFlexibleHours}" Margin="0,5,0,10"/>
+                        <TextBlock Text="When checked, the employee has flexible working hours with no fixed start/end time. Only total hours worked will be considered, regardless of when they work." 
+                                  Foreground="Gray" FontSize="12" Margin="25,-5,0,10" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0" IsVisible="{Binding IsFlexibleHours}">
+                        <TextBlock Text="Required Work Hours Per Day" Classes="label"/>
+                        <NumericUpDown Value="{Binding RequiredWorkHoursPerDay}" 
+                                     Minimum="1" Maximum="24" Increment="0.5" 
+                                     FormatString="0.##" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="Number of hours employee must work each day" 
+                                  Foreground="Gray" FontSize="12" Margin="0,5,0,10"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>

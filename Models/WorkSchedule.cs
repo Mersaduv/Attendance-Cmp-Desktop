@@ -11,11 +11,15 @@ namespace AttandenceDesktop.Models
         [Required, StringLength(100)]
         public string Name { get; set; }
         
-        [Required]
-        public TimeSpan StartTime { get; set; }
+        // Flag to determine if this is a flexible schedule (total hours only) or fixed schedule (start/end time)
+        public bool IsFlexibleSchedule { get; set; } = false;
         
-        [Required]
+        // For fixed schedules, these are required
+        public TimeSpan StartTime { get; set; }
         public TimeSpan EndTime { get; set; }
+        
+        // For flexible schedules, only total work hours is required
+        public double TotalWorkHours { get; set; } = 8.0; // Default 8 hours
         
         // Working days (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
         public bool IsWorkingDaySunday { get; set; } = false;
@@ -65,6 +69,13 @@ namespace AttandenceDesktop.Models
                 return 0;
             }
             
+            // If flexible schedule, return total work hours
+            if (IsFlexibleSchedule)
+            {
+                return TotalWorkHours;
+            }
+            
+            // Otherwise calculate from start/end time
             return (EndTime - StartTime).TotalHours;
         }
     }

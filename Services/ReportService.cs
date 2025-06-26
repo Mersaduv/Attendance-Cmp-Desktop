@@ -56,6 +56,15 @@ namespace AttandenceDesktop.Services
             // Get employee's hire date
             DateTime hireDate = employee.HireDate;
             
+            // Determine if the employee *currently* has a flexible schedule. This is important
+            // because some historical attendance rows may have been created before the
+            // `IsFlexibleSchedule` flag was introduced (or before the employee received a
+            // flexible-hours schedule). By checking the work-schedule directly we make sure
+            // that the report never shows Late / Early statuses for employees that should be
+            // evaluated purely on total-hours basis.
+            var employeeWorkSchedule = await _workScheduleService.GetEmployeeWorkScheduleAsync(employeeId);
+            bool employeeHasFlexibleSchedule = employeeWorkSchedule?.IsFlexibleSchedule ?? false;
+            
             // Pre-fetch all attendance records for this employee in the date range
             var attendances = await ctx.Attendances
                 .AsNoTracking() // Use AsNoTracking for better performance in read-only scenarios
@@ -87,6 +96,8 @@ namespace AttandenceDesktop.Services
             var today = DateTime.Today;
             var attendanceDict = attendances.ToDictionary(a => a.Date.Date);
             
+            double flexibleExpectedHours = employeeHasFlexibleSchedule ? employeeWorkSchedule?.TotalWorkHours ?? 0 : 0;
+            
             foreach (var date in dateRange)
             {
                 // Skip dates before hire date
@@ -106,57 +117,105 @@ namespace AttandenceDesktop.Services
                     bool isEarlyDeparture = attendance.IsEarlyDeparture;
                     bool isOvertime = attendance.OvertimeMinutes.HasValue && attendance.OvertimeMinutes.Value.TotalMinutes > 0;
                     
+                    // Determine if this day should be treated as flexible schedule. We rely on
+                    // either the flag stored on the attendance row *or* the current work-schedule
+                    // flag (in case the attendance row wasn't updated correctly).
+                    bool isFlexibleSchedule = attendance.IsFlexibleSchedule || employeeHasFlexibleSchedule;
+                    
                     // Determine the status based on attendance flags
                     string status;
-                    if (!attendance.IsComplete)
+                    
+                    // Special handling for flexible schedule employees (Total Hours Only)
+                    // They should only show Present, Half Day, or Overtime, not Late or Early Departure
+                    if (isFlexibleSchedule)
                     {
-                        status = "Incomplete";
-                    }
-                    else if (isLate && isEarlyDeparture)
-                    {
-                        status = "Late & Left Early";
-                    }
-                    else if (isLate)
-                    {
-                        // Check if this is a half-day attendance rather than just late arrival
-                        var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, date);
-                        var halfDayHours = expectedWorkHours / 2.0;
+                        // Reset late arrival and early departure flags for flexible schedules
+                        isLate = false;
+                        isEarlyDeparture = false;
                         
-                        if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                        if (!attendance.IsComplete)
                         {
-                            status = "Half Day";
+                            status = "Incomplete";
+                        }
+                        else if (isOvertime)
+                        {
+                            status = "Overtime";
+                        }
+                        else if (attendance.WorkDuration.HasValue)
+                        {
+                            // Calculate if this is a half day based on percentage of expected hours worked
+                            double expectedHours = attendance.ExpectedWorkHours;
+                            double actualHours = attendance.WorkDuration.Value.TotalHours;
+                            double percentage = expectedHours > 0 ? (actualHours / expectedHours) * 100 : 0;
+                            
+                            // Half day if between 40% and 90% of expected hours
+                            if (percentage >= 40 && percentage < 90)
+                            {
+                                status = "Half Day";
+                            }
+                            else
+                            {
+                                status = "Present";
+                            }
                         }
                         else
                         {
-                            status = "Late Arrival";
+                            status = "Present";
                         }
                     }
-                    else if (isEarlyDeparture)
-                    {
-                        // Also check if early departure is actually a half day
-                        var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, date);
-                        var halfDayHours = expectedWorkHours / 2.0;
-                        
-                        if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
-                        {
-                            status = "Half Day";
-                        }
-                        else
-                        {
-                            status = "Early Departure";
-                        }
-                    }
-                    else if (attendance.IsEarlyArrival)
-                    {
-                        status = "Early Arrival";
-                    }
-                    else if (isOvertime)
-                    {
-                        status = "Overtime";
-                    }
+                    // Standard handling for regular schedule employees
                     else
                     {
-                        status = "Present";
+                        if (!attendance.IsComplete)
+                        {
+                            status = "Incomplete";
+                        }
+                        else if (isLate && isEarlyDeparture)
+                        {
+                            status = "Late & Left Early";
+                        }
+                        else if (isLate)
+                        {
+                            // Check if this is a half-day attendance rather than just late arrival
+                            var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, date);
+                            var halfDayHours = expectedWorkHours / 2.0;
+                            
+                            if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                            {
+                                status = "Half Day";
+                            }
+                            else
+                            {
+                                status = "Late Arrival";
+                            }
+                        }
+                        else if (isEarlyDeparture)
+                        {
+                            // Also check if early departure is actually a half day
+                            var expectedWorkHours = await _workScheduleService.GetExpectedWorkHoursAsync(employeeId, date);
+                            var halfDayHours = expectedWorkHours / 2.0;
+                            
+                            if (attendance.WorkDuration.HasValue && attendance.WorkDuration.Value.TotalHours <= halfDayHours)
+                            {
+                                status = "Half Day";
+                            }
+                            else
+                            {
+                                status = "Early Departure";
+                            }
+                        }
+                        else if (attendance.IsEarlyArrival)
+                        {
+                            status = "Early Arrival";
+                        }
+                        else if (isOvertime)
+                        {
+                            status = "Overtime";
+                        }
+                        else
+                        {
+                            status = "Present";
+                        }
                     }
                     
                     reportItem = new AttendanceReportItem
@@ -169,17 +228,21 @@ namespace AttandenceDesktop.Services
                         CheckOutTime = attendance.CheckOutTime,
                         WorkDuration = attendance.WorkDuration,
                         Status = status,
-                        IsLate = isLate,
-                        IsEarlyDeparture = isEarlyDeparture,
+                        // For flexible schedules, we don't want to show late/early flags in the UI
+                        IsLate = isFlexibleSchedule ? false : isLate,
+                        IsEarlyDeparture = isFlexibleSchedule ? false : isEarlyDeparture,
                         IsHoliday = isHoliday,
                         IsNonWorkingDay = isNonWorkingDay,
                         IsOvertime = isOvertime,
-                        IsEarlyArrival = attendance.IsEarlyArrival,
+                        IsEarlyArrival = isFlexibleSchedule ? false : attendance.IsEarlyArrival,
                         Notes = attendance.Notes,
-                        LateMinutes = attendance.LateMinutes,
-                        EarlyDepartureMinutes = attendance.EarlyDepartureMinutes,
+                        // For flexible schedules, set late and early departure minutes to null
+                        LateMinutes = isFlexibleSchedule ? null : attendance.LateMinutes,
+                        EarlyDepartureMinutes = isFlexibleSchedule ? null : attendance.EarlyDepartureMinutes,
                         OvertimeMinutes = attendance.OvertimeMinutes,
-                        EarlyArrivalMinutes = attendance.EarlyArrivalMinutes
+                        EarlyArrivalMinutes = isFlexibleSchedule ? null : attendance.EarlyArrivalMinutes,
+                        IsFlexibleSchedule = isFlexibleSchedule,
+                        ExpectedWorkHours = isFlexibleSchedule && attendance.ExpectedWorkHours <= 0 ? flexibleExpectedHours : attendance.ExpectedWorkHours
                     };
                 }
                 else
@@ -214,7 +277,9 @@ namespace AttandenceDesktop.Services
                         WorkDuration = null,
                         Status = status,
                         IsHoliday = isHoliday,
-                        IsNonWorkingDay = isNonWorkingDay
+                        IsNonWorkingDay = isNonWorkingDay,
+                        IsFlexibleSchedule = employeeHasFlexibleSchedule,
+                        ExpectedWorkHours = employeeHasFlexibleSchedule ? flexibleExpectedHours : 0
                     };
                 }
                 
@@ -318,6 +383,22 @@ namespace AttandenceDesktop.Services
         public TimeSpan? EarlyDepartureMinutes { get; set; }
         public TimeSpan? OvertimeMinutes { get; set; }
         public TimeSpan? EarlyArrivalMinutes { get; set; }
+        
+        // Flag to indicate if employee has a flexible schedule
+        public bool IsFlexibleSchedule { get; set; } = false;
+        
+        // Stores the total expected work hours
+        public double ExpectedWorkHours { get; set; }
+        
+        // Stores the percentage of completed work hours
+        public double WorkHoursPercentage 
+        { 
+            get 
+            {
+                if (ExpectedWorkHours <= 0 || !WorkDuration.HasValue) return 0;
+                return WorkDuration.Value.TotalHours / ExpectedWorkHours * 100;
+            }
+        }
     }
     
     public class AttendanceReportStatistics

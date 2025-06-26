@@ -204,8 +204,10 @@ namespace AttandenceDesktop.Services
                 
                 // Update properties
                 existingWorkSchedule.Name = workSchedule.Name;
+                existingWorkSchedule.IsFlexibleSchedule = workSchedule.IsFlexibleSchedule;
                 existingWorkSchedule.StartTime = workSchedule.StartTime;
                 existingWorkSchedule.EndTime = workSchedule.EndTime;
+                existingWorkSchedule.TotalWorkHours = workSchedule.TotalWorkHours;
                 existingWorkSchedule.IsWorkingDaySunday = workSchedule.IsWorkingDaySunday;
                 existingWorkSchedule.IsWorkingDayMonday = workSchedule.IsWorkingDayMonday;
                 existingWorkSchedule.IsWorkingDayTuesday = workSchedule.IsWorkingDayTuesday;
@@ -427,6 +429,13 @@ namespace AttandenceDesktop.Services
         {
             var schedule = await GetEmployeeWorkScheduleAsync(employeeId);
             if (schedule == null || !schedule.IsWorkingDay(date.DayOfWeek))
+            {
+                return (null, null);
+            }
+
+            // If this is a flexible schedule (no fixed hours), return null values
+            // as there are no specific check-in/check-out times
+            if (schedule.IsFlexibleSchedule)
             {
                 return (null, null);
             }

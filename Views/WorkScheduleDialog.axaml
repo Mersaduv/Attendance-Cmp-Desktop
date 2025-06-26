@@ -6,7 +6,7 @@
         mc:Ignorable="d"
         x:Class="AttandenceDesktop.Views.WorkScheduleDialog"
         x:DataType="vm:WorkScheduleDialogViewModel"
-        Title="{Binding WindowTitle}" Width="400" Height="650" WindowStartupLocation="CenterOwner">
+        Title="{Binding WindowTitle}" Width="400" Height="600" WindowStartupLocation="CenterOwner">
 
     <Design.DataContext>
         <vm:WorkScheduleDialogViewModel />
@@ -20,9 +20,23 @@
 
         <ScrollViewer Grid.Row="0">
             <StackPanel Spacing="10">
-                <TextBlock Text="Name" />
-                <TextBox Text="{Binding Name}" />
+                <!-- Error message display -->
+                <Border Background="#FFE0E0" BorderBrush="#FFB0B0" BorderThickness="1" 
+                        CornerRadius="4" Padding="8" Margin="0,0,0,10"
+                        IsVisible="{Binding ValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock Text="{Binding ValidationMessage}" Foreground="Red" 
+                               TextWrapping="Wrap" />
+                </Border>
+                
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Name" />
+                    <TextBlock Text="*" Foreground="Red" FontWeight="Bold" Margin="3,0,0,0" />
+                </StackPanel>
+                <TextBox Text="{Binding Name}" Classes.error="{Binding !Name}"/>
 
+                <!-- Fixed Hours Schedule Fields -->
+                <TextBlock Text="Schedule Times" FontWeight="Bold" Margin="0,20,0,5" />
+                
                 <TextBlock Text="Start Time (HH:mm)" Margin="0,10,0,0" />
                 <TextBox Text="{Binding StartTime}" />
 
@@ -32,10 +46,16 @@
                 <TextBlock Text="Grace Period (minutes)" Margin="0,10,0,0" />
                 <NumericUpDown Value="{Binding FlexTimeAllowanceMinutes}" Minimum="0" Maximum="60" Increment="1" />
 
-                <TextBlock Text="Department" Margin="0,10,0,0" />
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Department" Margin="0,10,0,0" />
+                    <TextBlock Text="*" Foreground="Red" FontWeight="Bold" Margin="3,10,0,0" />
+                </StackPanel>
                 <ComboBox ItemsSource="{Binding Departments}"
                           DisplayMemberBinding="{Binding Name}"
-                          SelectedItem="{Binding SelectedDepartment}"/>
+                          SelectedItem="{Binding SelectedDepartment}"
+                          PlaceholderText="Select a department"
+                          Classes.error="{Binding !SelectedDepartment}"
+                          Width="200" />
                 
                 <!-- Working Days Section -->
                 <TextBlock Text="Working Days" FontWeight="Bold" Margin="0,20,0,5" />
@@ -50,6 +70,8 @@
                         <CheckBox Content="Saturday" IsChecked="{Binding IsWorkingDaySaturday}" />
                     </StackPanel>
                 </Border>
+                
+                <TextBlock Text="* Required fields" Foreground="Red" FontSize="12" Margin="0,10,0,0" />
             </StackPanel>
         </ScrollViewer>
 

@@ -44,8 +44,10 @@ public class ApplicationDbContext : DbContext
             { 
                 Id = 1, 
                 Name = "Standard 9-5",
+                IsFlexibleSchedule = false,
                 StartTime = new TimeSpan(9, 0, 0),
                 EndTime = new TimeSpan(17, 0, 0),
+                TotalWorkHours = 8.0,
                 IsWorkingDayMonday = true,
                 IsWorkingDayTuesday = true,
                 IsWorkingDayWednesday = true,
