@@ -17,6 +17,7 @@
     
     <Window.Resources>
         <converters:DateTimeToDateTimeOffsetConverter x:Key="DateTimeToDateTimeOffset"/>
+        <converters:BoolToStatusConverter x:Key="BoolToStatus"/>
     </Window.Resources>
     
     <Window.Styles>
@@ -88,7 +89,7 @@
                     </StackPanel>
                 </Grid>
                 
-                <!-- Third Row: Position, Employee Code -->
+                <!-- Third Row: Position, Employee ID -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -101,8 +102,8 @@
                     </StackPanel>
                     
                     <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                        <TextBlock Text="Employee Code" Classes="label"/>
-                        <TextBox Text="{Binding EmployeeCode}" Watermark="Enter employee code"/>
+                        <TextBlock Text="Employee ID" Classes="label"/>
+                        <TextBox Text="{Binding EmployeeNumber}"/>
                     </StackPanel>
                 </Grid>
                 

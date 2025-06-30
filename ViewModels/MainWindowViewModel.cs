@@ -31,6 +31,9 @@ public partial class MainWindowViewModel : ObservableObject
         WorkSchedules = new WorkScheduleViewModel();
         WorkCalendars = new WorkCalendarViewModel();
         Reports = new ReportViewModel();
+        var mockRefresh = new DataRefreshService();
+        var mockDeviceService = new DeviceService(()=> null!, mockRefresh);
+        Devices = new DeviceViewModel(mockDeviceService, mockRefresh);
         
         // Create mock services for design-time
         var mockReportService = new ReportService(
@@ -41,12 +44,14 @@ public partial class MainWindowViewModel : ObservableObject
         var mockEmployeeService = new Services.EmployeeService(() => null!, null!, null!);
         var mockDepartmentService = new Services.DepartmentService(() => null!);
         var mockDataRefreshService = new Services.DataRefreshService();
+        var mockExportService = new Services.ExportService();
         
         OverviewReports = new OverviewReportViewModel(
             mockReportService, 
             mockEmployeeService, 
             mockDepartmentService, 
-            mockDataRefreshService);
+            mockDataRefreshService,
+            mockExportService);
         
         // Set current view
         CurrentView = Dashboard;
@@ -54,6 +59,7 @@ public partial class MainWindowViewModel : ObservableObject
         ShowDashboardCommand = new RelayCommand(() => CurrentView = Dashboard);
         ShowDepartmentsCommand = new RelayCommand(() => CurrentView = Departments);
         ShowEmployeesCommand = new RelayCommand(() => CurrentView = Employees);
+        ShowDevicesCommand = new RelayCommand(() => CurrentView = Devices);
         ShowAttendanceCommand = new RelayCommand(() => CurrentView = Attendance);
         ShowWorkSchedulesCommand = new RelayCommand(() => CurrentView = WorkSchedules);
         ShowWorkCalendarsCommand = new RelayCommand(() => CurrentView = WorkCalendars);
@@ -70,7 +76,8 @@ public partial class MainWindowViewModel : ObservableObject
         WorkScheduleViewModel workScheduleViewModel,
         WorkCalendarViewModel workCalendarViewModel,
         ReportViewModel reportViewModel,
-        OverviewReportViewModel overviewReportViewModel)
+        OverviewReportViewModel overviewReportViewModel,
+        DeviceViewModel devicesViewModel)
     {
         Dashboard = dashboardViewModel;
         Departments = departmentViewModel;
@@ -80,6 +87,7 @@ public partial class MainWindowViewModel : ObservableObject
         WorkCalendars = workCalendarViewModel;
         Reports = reportViewModel;
         OverviewReports = overviewReportViewModel;
+        Devices = devicesViewModel;
         
         // Default to Dashboard
         CurrentView = Dashboard;
@@ -88,6 +96,7 @@ public partial class MainWindowViewModel : ObservableObject
         ShowDashboardCommand = new RelayCommand(() => CurrentView = Dashboard);
         ShowDepartmentsCommand = new RelayCommand(() => CurrentView = Departments);
         ShowEmployeesCommand = new RelayCommand(() => CurrentView = Employees);
+        ShowDevicesCommand = new RelayCommand(() => CurrentView = Devices);
         ShowAttendanceCommand = new RelayCommand(() => CurrentView = Attendance);
         ShowWorkSchedulesCommand = new RelayCommand(() => CurrentView = WorkSchedules);
         ShowWorkCalendarsCommand = new RelayCommand(() => CurrentView = WorkCalendars);
@@ -103,10 +112,12 @@ public partial class MainWindowViewModel : ObservableObject
     public WorkCalendarViewModel WorkCalendars { get; }
     public ReportViewModel Reports { get; }
     public OverviewReportViewModel OverviewReports { get; }
+    public DeviceViewModel Devices { get; }
 
     public ICommand ShowDashboardCommand { get; }
     public ICommand ShowDepartmentsCommand { get; }
     public ICommand ShowEmployeesCommand { get; }
+    public ICommand ShowDevicesCommand { get; }
     public ICommand ShowAttendanceCommand { get; }
     public ICommand ShowWorkSchedulesCommand { get; }
     public ICommand ShowWorkCalendarsCommand { get; }

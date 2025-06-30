@@ -15,7 +15,7 @@
     <Grid RowDefinitions="Auto,*">
         <!-- Report Controls -->
         <Border Grid.Row="0" Background="White" Padding="10" Margin="0,0,0,10" CornerRadius="5" BoxShadow="0 2 4 #20000000">
-            <Grid ColumnDefinitions="*,*,Auto">
+            <Grid ColumnDefinitions="*,*,Auto,Auto">
                 <!-- Date Range -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="5" VerticalAlignment="Center">
                     <TextBlock Text="Start Date" VerticalAlignment="Center" Margin="0,0,5,0" />
@@ -33,6 +33,44 @@
                             Background="#1976D2"
                             Foreground="White"
                             Padding="15,8" />
+                </StackPanel>
+
+                <!-- Export Button -->
+                <StackPanel Grid.Column="3" Margin="5" VerticalAlignment="Center">
+                    <Button x:Name="ExportButton"
+                            Content="Export"
+                            IsEnabled="{Binding CanExport}"
+                            ToolTip.Tip="Export is enabled when there is data to export"
+                            HorizontalContentAlignment="Center"
+                            Background="#388E3C"
+                            Foreground="White"
+                            Padding="15,8"
+                            Click="OnExportButtonClick">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Excel (.xlsx)" 
+                                          x:Name="ExcelMenuItem"
+                                          Click="OnExportMenuItemClick" 
+                                          Tag="excel"/>
+                                <MenuItem Header="PDF (.pdf)" 
+                                          x:Name="PdfMenuItem"
+                                          Click="OnExportMenuItemClick"
+                                          Tag="pdf"/>
+                                <MenuItem Header="CSV (.csv)" 
+                                          x:Name="CsvMenuItem"
+                                          Click="OnExportMenuItemClick"
+                                          Tag="csv"/>
+                                <MenuItem Header="Word (.docx)" 
+                                          x:Name="WordMenuItem"
+                                          Click="OnExportMenuItemClick"
+                                          Tag="word"/>
+                                <MenuItem Header="Text (.txt)" 
+                                          x:Name="TxtMenuItem"
+                                          Click="OnExportMenuItemClick"
+                                          Tag="txt"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>

@@ -18,6 +18,7 @@ namespace AttandenceDesktop.ViewModels
         private readonly EmployeeService _employeeService;
         private readonly DepartmentService _departmentService;
         private readonly DataRefreshService _dataRefreshService;
+        private readonly ExportService _exportService;
         
         private DateTime _startDate = DateTime.Today.AddDays(-30);
         private DateTime _endDate = DateTime.Today;
@@ -65,12 +66,14 @@ namespace AttandenceDesktop.ViewModels
             ReportService reportService,
             EmployeeService employeeService,
             DepartmentService departmentService,
-            DataRefreshService dataRefreshService)
+            DataRefreshService dataRefreshService,
+            ExportService exportService)
         {
             _reportService = reportService;
             _employeeService = employeeService;
             _departmentService = departmentService;
             _dataRefreshService = dataRefreshService;
+            _exportService = exportService;
             
             // Set up data refresh handlers
             _dataRefreshService.AttendanceChanged += OnAttendanceChanged;
@@ -79,7 +82,7 @@ namespace AttandenceDesktop.ViewModels
             
             // Initialize commands
             GenerateReportCommand = new AsyncRelayCommand(GenerateReportAsync);
-            ExportReportCommand = new AsyncRelayCommand(ExportReportAsync);
+            ExportReportCommand = new AsyncRelayCommand<string?>(ExportReportAsync, CanExecuteExport);
             CancelReportCommand = new RelayCommand(CancelReport);
             SelectAllCommand = new RelayCommand(SelectAllEmployees);
             
@@ -739,6 +742,7 @@ namespace AttandenceDesktop.ViewModels
                 OnPropertyChanged(nameof(CurrentPageDates));
                 
                 ProgressStatus = "Report generation complete";
+                NotifyExportStateChanged();
             }
             catch (OperationCanceledException)
             {
@@ -759,8 +763,12 @@ namespace AttandenceDesktop.ViewModels
                 await Task.Delay(100); // Small delay to ensure UI updates
                 SyncPaginationState();
                 
+                // Force export button state update now that report generation is completed
+                NotifyExportStateChanged();
+                
                 // Log final pagination state
                 Program.LogMessage($"OverviewReport: Final pagination state - Employee pages: {TotalEmployeePages}, Date pages: {TotalDatePages}");
+                Program.LogMessage($"OverviewReport: Final export state - CanExport={CanExport}, DataCount={_employeeAttendanceData.Count}");
             }
         }
         
@@ -843,19 +851,311 @@ namespace AttandenceDesktop.ViewModels
         private void ClearAttendanceCache()
         {
             _attendanceStatusCache.Clear();
+            NotifyExportStateChanged();
         }
         
         // Export report to Excel or PDF
-        private async Task ExportReportAsync()
+        private async Task ExportReportAsync(string? format)
         {
-            if (_employeeAttendanceData.Count == 0)
-            {
-                // Show error message
+            if (string.IsNullOrWhiteSpace(format))
                 return;
+
+            try
+            {
+                // Use Dispatcher to set UI properties
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    IsLoading = true;
+                    ProgressStatus = $"Exporting report to {format.ToUpper()}...";
+                });
+
+                // Ensure we have data for ALL selected employees (not just current page)
+                await LoadCompleteDataForAllEmployeesAsync();
+
+                // Flatten data after loading is complete
+                var data = _employeeAttendanceData.SelectMany(kv => kv.Value).ToList();
+
+                // Determine default file extension
+                var defaultExt = format.ToLower() switch
+                {
+                    "excel" or "xlsx" => "xlsx",
+                    "csv" => "csv",
+                    "pdf" => "pdf",
+                    "word" or "docx" => "docx",
+                    "txt" => "txt",
+                    _ => format
+                };
+
+                // Default filename with timestamp
+                var defaultFileName = $"AttendanceReport_{DateTime.Now:yyyyMMdd_HHmmss}.{defaultExt}";
+                
+                // Default directory (Documents folder)
+                var defaultDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                
+                // Show save file dialog to let user choose the location
+                string? filePath = null;
+                
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                {
+                    try
+                    {
+                        // Get the top level window to access storage provider
+                        var topLevel = Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+                        var mainWindow = topLevel?.MainWindow;
+                        
+                        if (mainWindow != null)
+                        {
+                            // Use StorageProvider API
+                            var fileOptions = new Avalonia.Platform.Storage.FilePickerSaveOptions
+                            {
+                                Title = $"Save {format.ToUpper()} Report",
+                                SuggestedFileName = defaultFileName,
+                                DefaultExtension = defaultExt
+                            };
+                            
+                            // Add appropriate file type filters based on format
+                            switch (format.ToLower())
+                            {
+                                case "excel":
+                                case "xlsx":
+                                    fileOptions.FileTypeChoices = new[]
+                                    {
+                                        new Avalonia.Platform.Storage.FilePickerFileType("Excel Files")
+                                        {
+                                            Patterns = new[] { "*.xlsx" },
+                                            MimeTypes = new[] { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+                                        }
+                                    };
+                                    break;
+                                case "pdf":
+                                    fileOptions.FileTypeChoices = new[]
+                                    {
+                                        new Avalonia.Platform.Storage.FilePickerFileType("PDF Files")
+                                        {
+                                            Patterns = new[] { "*.pdf" },
+                                            MimeTypes = new[] { "application/pdf" }
+                                        }
+                                    };
+                                    break;
+                                case "csv":
+                                    fileOptions.FileTypeChoices = new[]
+                                    {
+                                        new Avalonia.Platform.Storage.FilePickerFileType("CSV Files")
+                                        {
+                                            Patterns = new[] { "*.csv" },
+                                            MimeTypes = new[] { "text/csv" }
+                                        }
+                                    };
+                                    break;
+                                case "word":
+                                case "docx":
+                                    fileOptions.FileTypeChoices = new[]
+                                    {
+                                        new Avalonia.Platform.Storage.FilePickerFileType("Word Files")
+                                        {
+                                            Patterns = new[] { "*.docx" },
+                                            MimeTypes = new[] { "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }
+                                        }
+                                    };
+                                    break;
+                                case "txt":
+                                    fileOptions.FileTypeChoices = new[]
+                                    {
+                                        new Avalonia.Platform.Storage.FilePickerFileType("Text Files")
+                                        {
+                                            Patterns = new[] { "*.txt" },
+                                            MimeTypes = new[] { "text/plain" }
+                                        }
+                                    };
+                                    break;
+                            }
+                            
+                            // Show dialog and get selected file
+                            var file = await mainWindow.StorageProvider.SaveFilePickerAsync(fileOptions);
+                            
+                            if (file != null)
+                            {
+                                filePath = file.Path.LocalPath;
+                                Program.LogMessage($"User selected file path: {filePath}");
+                            }
+                            else
+                            {
+                                Program.LogMessage("User cancelled file selection");
+                            }
+                        }
+                        else
+                        {
+                            Program.LogMessage("Could not access main window, using default path");
+                            // Fallback to default path
+                            filePath = Path.Combine(defaultDirectory, defaultFileName);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Program.LogMessage($"Error showing save file dialog: {ex.Message}");
+                        // Fallback to default path if dialog fails
+                        filePath = Path.Combine(defaultDirectory, defaultFileName);
+                    }
+                });
+                
+                // If user cancelled the dialog, exit
+                if (string.IsNullOrWhiteSpace(filePath))
+                {
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        IsLoading = false;
+                        ProgressStatus = "Export cancelled";
+                        
+                        // Clear the status message after 3 seconds
+                        Task.Delay(3000).ContinueWith(_ => 
+                        {
+                            Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => 
+                            {
+                                ProgressStatus = string.Empty;
+                            });
+                        });
+                    });
+                    return;
+                }
+
+                // Export using service
+                await _exportService.ExportAsync(data, format, filePath);
+
+                // Optionally log
+                Program.LogMessage($"Report exported to {filePath}");
+                
+                // Show message to user using simple alert dialog
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        // Just log success message for now
+                        Program.LogMessage($"Export successful: {filePath}");
+                        
+                        // Set a property to show success message in UI
+                        IsLoading = false;
+                        ProgressStatus = $"Report exported to {filePath}";
+                        
+                        // Clear the status message after 5 seconds
+                        Task.Delay(5000).ContinueWith(_ => 
+                        {
+                            Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => 
+                            {
+                                ProgressStatus = string.Empty;
+                            });
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Program.LogMessage($"Error showing message box: {ex.Message}");
+                    }
+                });
             }
+            catch (Exception ex)
+            {
+                Program.LogMessage($"Error exporting report: {ex.Message}");
+                Program.LogMessage($"Stack trace: {ex.StackTrace}");
+                
+                // Show error message to user using simple alert dialog
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        // Set a property to show error message in UI
+                        IsLoading = false;
+                        ProgressStatus = $"Error: {ex.Message}";
+                        
+                        // Clear the status message after 5 seconds
+                        Task.Delay(5000).ContinueWith(_ => 
+                        {
+                            Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => 
+                            {
+                                ProgressStatus = string.Empty;
+                            });
+                        });
+                    }
+                    catch (Exception msgEx)
+                    {
+                        Program.LogMessage($"Error showing error message box: {msgEx.Message}");
+                    }
+                });
+            }
+            finally
+            {
+                // Use Dispatcher to set UI properties
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    IsLoading = false;
+                });
+            }
+        }
+        
+        // Public wrapper method for direct access from View
+        public async Task ExportToFormat(string format)
+        {
+            Program.LogMessage($"ExportToFormat called with format: {format}");
             
-            // Implementation for exporting to Excel or PDF would go here
-            await Task.Delay(100); // Placeholder
+            try
+            {
+                if (CanExport)
+                {
+                    Program.LogMessage($"CanExport is true. Format: {format}");
+                    
+                    // Check data
+                    var employeeDataCount = _employeeAttendanceData.Count;
+                    var totalItems = _employeeAttendanceData.Sum(kv => kv.Value.Count);
+                    Program.LogMessage($"Employee data collections: {employeeDataCount}, total items: {totalItems}");
+                    
+                    // Log all available formats
+                    Program.LogMessage("Available formats: excel, pdf, csv, word, txt");
+                    
+                    // Execute export directly
+                    Program.LogMessage($"Executing ExportReportAsync with format '{format}' directly");
+                    
+                    // Always use Dispatcher.UIThread.InvokeAsync to ensure we're on the UI thread
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                    {
+                        await ExportReportAsync(format);
+                    });
+                    
+                    Program.LogMessage($"ExportReportAsync completed for format: {format}");
+                }
+                else
+                {
+                    Program.LogMessage($"Export is disabled, cannot export. Reasons: DataCount={_employeeAttendanceData.Count}, IsLoading={IsLoading}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.LogMessage($"Exception in ExportToFormat: {ex.Message}");
+                Program.LogMessage($"Stack trace: {ex.StackTrace}");
+                
+                // Try to provide more details
+                try
+                {
+                    Program.LogMessage($"Export service is null: {_exportService == null}");
+                }
+                catch (Exception innerEx)
+                {
+                    Program.LogMessage($"Error checking export service: {innerEx.Message}");
+                }
+            }
+        }
+        
+        // Indicates whether the export command can execute (for ICommand)
+        private bool CanExecuteExport(string? _) => _employeeAttendanceData.Count > 0 && !IsLoading;
+
+        // Exposed property for UI binding (IsEnabled)
+        public bool CanExport => _employeeAttendanceData.Count > 0 && !IsLoading;
+
+        // Notify UI when CanExport may have changed
+        private void NotifyExportStateChanged()
+        {
+            OnPropertyChanged(nameof(CanExport));
+            ((AsyncRelayCommand<string?>)ExportReportCommand).NotifyCanExecuteChanged();
+            
+            // Log current state to help debug export button issues
+            Program.LogMessage($"Export state changed: CanExport={CanExport}, DataCount={_employeeAttendanceData.Count}, IsLoading={IsLoading}");
         }
         
         // Handle department checkbox changes
@@ -1665,6 +1965,20 @@ namespace AttandenceDesktop.ViewModels
             }
             
             return result;
+        }
+
+        // Helper to load full data for all employees (all pages) before export
+        private async Task LoadCompleteDataForAllEmployeesAsync()
+        {
+            foreach (var employeeId in SelectedEmployeeIds)
+            {
+                if (!_employeeAttendanceData.ContainsKey(employeeId) ||
+                    _employeeAttendanceData[employeeId].Count < DateRange.Count)
+                {
+                    var fullData = await GetCompleteAttendanceDataForEmployeeAsync(employeeId);
+                    _employeeAttendanceData[employeeId] = fullData;
+                }
+            }
         }
     }
     

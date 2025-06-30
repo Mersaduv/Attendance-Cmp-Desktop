@@ -24,6 +24,8 @@ namespace AttandenceDesktop.ViewModels
         private readonly EmployeeService _employeeService;
         private readonly DepartmentService _departmentService;
         private readonly DataRefreshService _dataRefreshService;
+        private readonly ExportService _exportService;
+        private readonly ReportGridExportService _gridExportService;
         
         private DateTime _startDate = DateTime.Today.AddDays(-30);
         private DateTime _endDate = DateTime.Today;
@@ -47,15 +49,19 @@ namespace AttandenceDesktop.ViewModels
             ReportService reportService,
             EmployeeService employeeService,
             DepartmentService departmentService,
-            DataRefreshService dataRefreshService)
+            DataRefreshService dataRefreshService,
+            ExportService exportService,
+            ReportGridExportService gridExportService)
         {
             _reportService = reportService;
             _employeeService = employeeService;
             _departmentService = departmentService;
             _dataRefreshService = dataRefreshService;
+            _exportService = exportService;
+            _gridExportService = gridExportService;
             
             GenerateReportCommand = new AsyncRelayCommand(GenerateReportAsync);
-            ExportReportCommand = new AsyncRelayCommand(ExportReportAsync);
+            ExportReportCommand = new AsyncRelayCommand(async () => await ExportToFormat("excel"));
             NextPageCommand = new RelayCommand(NextPage, CanGoToNextPage);
             PreviousPageCommand = new RelayCommand(PreviousPage, CanGoToPreviousPage);
             
@@ -66,6 +72,9 @@ namespace AttandenceDesktop.ViewModels
             
             // Initialize data asynchronously
             InitializeDataAsync();
+            
+            // Ensure CanExport initial state
+            OnPropertyChanged(nameof(CanExport));
         }
         
         // Parameterless constructor for design-time support
@@ -75,6 +84,8 @@ namespace AttandenceDesktop.ViewModels
             _employeeService = null!;
             _departmentService = null!;
             _dataRefreshService = null!;
+            _exportService = null!;
+            _gridExportService = null!;
             
             GenerateReportCommand = new AsyncRelayCommand(async () => {});
             ExportReportCommand = new AsyncRelayCommand(async () => {});
@@ -188,7 +199,13 @@ namespace AttandenceDesktop.ViewModels
         public bool IsLoading
         {
             get => _isLoading;
-            set => SetProperty(ref _isLoading, value);
+            set
+            {
+                if (SetProperty(ref _isLoading, value))
+                {
+                    OnPropertyChanged(nameof(CanExport));
+                }
+            }
         }
         
         // Properties to control visibility of selection controls
@@ -325,6 +342,7 @@ namespace AttandenceDesktop.ViewModels
             {
                 // Get complete attendance data for the selected entity
                 _allReportItems = await GetCompleteDataAsync();
+                OnPropertyChanged(nameof(CanExport));
                 
                 // Calculate statistics based on all data
                 Program.LogMessage("ReportViewModel: Calculating report statistics");
@@ -400,17 +418,113 @@ namespace AttandenceDesktop.ViewModels
             _ = UpdateDisplayedItemsAsync();
         }
         
-        private async Task ExportReportAsync()
+        private async Task ExportReportAsync(string format)
         {
-            if (_allReportItems.Count == 0)
-            {
-                // Show error message
+            if (_exportService == null)
                 return;
+
+            if (_allReportItems.Count == 0)
+                return;
+
+            try
+            {
+                IsLoading = true;
+
+                // Determine default extension
+                var defaultExt = format.ToLower() switch
+                {
+                    "excel" or "xlsx" => "xlsx",
+                    "pdf" => "pdf",
+                    "csv" => "csv",
+                    "word" or "docx" => "docx",
+                    "txt" => "txt",
+                    _ => format
+                };
+
+                var defaultFileName = $"AttendanceReport_{DateTime.Now:yyyyMMdd_HHmmss}.{defaultExt}";
+                var defaultDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+                string? filePath = null;
+
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                {
+                    var topLevel = Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+                    var mainWindow = topLevel?.MainWindow;
+
+                    if (mainWindow != null)
+                    {
+                        var fileOptions = new Avalonia.Platform.Storage.FilePickerSaveOptions
+                        {
+                            Title = $"Save {format.ToUpper()} Report",
+                            SuggestedFileName = defaultFileName,
+                            DefaultExtension = defaultExt
+                        };
+
+                        switch (format.ToLower())
+                        {
+                            case "excel":
+                            case "xlsx":
+                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("Excel Files") { Patterns = new[] { "*.xlsx" } } };
+                                break;
+                            case "pdf":
+                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("PDF Files") { Patterns = new[] { "*.pdf" } } };
+                                break;
+                            case "csv":
+                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("CSV Files") { Patterns = new[] { "*.csv" } } };
+                                break;
+                            case "word":
+                            case "docx":
+                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("Word Files") { Patterns = new[] { "*.docx" } } };
+                                break;
+                            case "txt":
+                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("Text Files") { Patterns = new[] { "*.txt" } } };
+                                break;
+                        }
+
+                        var file = await mainWindow.StorageProvider.SaveFilePickerAsync(fileOptions);
+                        if (file != null)
+                        {
+                            filePath = file.Path.LocalPath;
+                        }
+                    }
+                });
+
+                if (string.IsNullOrWhiteSpace(filePath))
+                {
+                    return;
+                }
+
+                // If excel, generate grid-style export
+                if (format.Equals("excel", StringComparison.OrdinalIgnoreCase) || format.Equals("xlsx", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Task.Run(async () => await _gridExportService.ExportToExcelAsync(_allReportItems, filePath));
+                }
+                else
+                {
+                    await Task.Run(async () => await _exportService.ExportAsync(_allReportItems, format, filePath));
+                }
             }
-            
-            // Implementation for exporting to Excel or PDF would go here
-            await Task.Delay(100); // Placeholder
+            catch (Exception ex)
+            {
+                Program.LogMessage($"ReportViewModel Export error: {ex.Message}");
+            }
+            finally
+            {
+                IsLoading = false;
+            }
         }
+        
+        // Export helper that is invoked by the view (from context menu)
+        public async Task ExportToFormat(string format)
+        {
+            if (!CanExport || string.IsNullOrWhiteSpace(format))
+                return;
+
+            await ExportReportAsync(format);
+        }
+        
+        // Indicates whether the export button should be enabled
+        public bool CanExport => _allReportItems.Count > 0 && !IsLoading;
         
         // Get complete attendance data for an entity (employee/department/company) across all date range
         private async Task<List<AttendanceReportItem>> GetCompleteDataAsync()

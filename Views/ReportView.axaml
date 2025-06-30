@@ -474,13 +474,26 @@
                         Padding="15,8" />
             </StackPanel>
             
-            <!-- Export Button -->
+            <!-- Export Button with context menu for multiple formats -->
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                <Button Command="{Binding ExportReportCommand}" 
-                        Content="Export Report" 
-                        Background="#4CAF50"
+                <Button x:Name="ExportButton"
+                        Content="Export"
+                        IsEnabled="{Binding CanExport}"
+                        HorizontalContentAlignment="Center"
+                        Background="#388E3C"
                         Foreground="White"
-                        Padding="15,8" />
+                        Padding="15,8"
+                        Click="OnExportButtonClick">
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Excel (.xlsx)" Click="OnExportMenuItemClick" Tag="excel" />
+                            <MenuItem Header="PDF (.pdf)" Click="OnExportMenuItemClick" Tag="pdf" />
+                            <MenuItem Header="CSV (.csv)" Click="OnExportMenuItemClick" Tag="csv" />
+                            <MenuItem Header="Word (.docx)" Click="OnExportMenuItemClick" Tag="word" />
+                            <MenuItem Header="Text (.txt)" Click="OnExportMenuItemClick" Tag="txt" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
             </StackPanel>
         </Grid>
         

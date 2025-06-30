@@ -16,6 +16,7 @@ namespace AttandenceDesktop.ViewModels
     {
         private readonly EmployeeService _employeeService;
         private readonly DepartmentService _departmentService;
+        private readonly DeviceService _deviceService;
         private readonly DataRefreshService _dataRefreshService;
         
         private ObservableCollection<Employee> _employees;
@@ -55,15 +56,18 @@ namespace AttandenceDesktop.ViewModels
         }
         
         public ICommand LoadEmployeesCommand { get; }
+        public IRelayCommand AddFingerprintCommand { get; }
         
-        public EmployeeViewModel(EmployeeService employeeService, DepartmentService departmentService, DataRefreshService dataRefreshService)
+        public EmployeeViewModel(EmployeeService employeeService, DepartmentService departmentService, DeviceService deviceService, DataRefreshService dataRefreshService)
         {
             _employeeService = employeeService;
             _departmentService = departmentService;
+            _deviceService = deviceService;
             _dataRefreshService = dataRefreshService;
             
             Employees = new ObservableCollection<Employee>();
             LoadEmployeesCommand = new AsyncRelayCommand(LoadEmployeesAsync);
+            AddFingerprintCommand = new AsyncRelayCommand<Employee>(AddFingerprintAsync);
             
             // Subscribe to data change events
             _dataRefreshService.EmployeesChanged += OnEmployeesChanged;
@@ -78,6 +82,7 @@ namespace AttandenceDesktop.ViewModels
         {
             _employeeService = null!;
             _departmentService = null!;
+            _deviceService = null!;
             _dataRefreshService = null!;
             
             _employees = new ObservableCollection<Employee>();
@@ -86,6 +91,7 @@ namespace AttandenceDesktop.ViewModels
             _errorMessage = string.Empty;
             
             LoadEmployeesCommand = new AsyncRelayCommand(async () => { });
+            AddFingerprintCommand = new RelayCommand(() => { });
             
             // Add some design-time data
             Employees.Add(new Employee { 
@@ -221,6 +227,20 @@ namespace AttandenceDesktop.ViewModels
                 Debug.WriteLine($"Error deleting employee: {ex.Message}");
                 ErrorMessage = $"Failed to delete employee: {ex.Message}";
                 throw;
+            }
+        }
+        
+        private async Task AddFingerprintAsync(Employee emp)
+        {
+            if(emp == null) return;
+            var devices = _deviceService == null ? new List<Device>() : await _deviceService.GetAllAsync();
+            var dlgVm = new FingerprintDialogViewModel(emp, devices);
+            var dlg = new Views.FingerprintDialog{ DataContext = dlgVm };
+            var main = (App.Current.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+            var ok = await dlg.ShowDialog<bool>(main);
+            if(ok)
+            {
+                await _employeeService.UpdateFingerprintAsync(emp.Id, dlgVm.ZkUserId!, dlgVm.FingerprintTemplate1);
             }
         }
     }

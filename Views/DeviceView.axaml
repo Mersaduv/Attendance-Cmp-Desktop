@@ -1,0 +1,46 @@
+<UserControl x:Name="root"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AttandenceDesktop.ViewModels"
+             xmlns:converters="using:AttandenceDesktop.Converters"
+             mc:Ignorable="d"
+             x:Class="AttandenceDesktop.Views.DeviceView"
+             x:DataType="vm:DeviceViewModel">
+    <UserControl.Resources>
+        <converters:NullToBoolConverter x:Key="NullToBool"/>
+    </UserControl.Resources>
+    <StackPanel Margin="16" Spacing="12">
+        <DockPanel>
+            <TextBlock Text="Devices" Classes="header"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Add" Command="{Binding AddCommand}" Width="80"/>
+                <Button Content="Edit" Command="{Binding EditCommand}" Width="80" IsEnabled="{Binding SelectedDevice, Converter={StaticResource NullToBool}}"/>
+                <Button Content="Delete" Command="{Binding DeleteCommand}" Width="80" IsEnabled="{Binding SelectedDevice, Converter={StaticResource NullToBool}}"/>
+                <Button Content="Fetch" Command="{Binding FetchLogsCommand}" Width="80" IsEnabled="{Binding SelectedDevice, Converter={StaticResource NullToBool}}"/>
+            </StackPanel>
+        </DockPanel>
+        <Border Classes="card">
+            <DataGrid ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" AutoGenerateColumns="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="60"/>
+                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="IP" Binding="{Binding IPAddress}" Width="160"/>
+                    <DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="80"/>
+                    <DataGridTextColumn Header="Machine" Binding="{Binding MachineNumber}" Width="80"/>
+                    <DataGridTemplateColumn Header="Actions" Width="160">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Button Content="Edit" Width="60" Command="{Binding DataContext.EditCommand, ElementName=root}" CommandParameter="{Binding}" />
+                                    <Button Content="Delete" Width="60" Background="#f44336" Foreground="White" Command="{Binding DataContext.DeleteCommand, ElementName=root}" CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+    </StackPanel>
+</UserControl> 

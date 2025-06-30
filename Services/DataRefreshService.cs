@@ -10,6 +10,7 @@ namespace AttandenceDesktop.Services
         public event EventHandler AttendanceChanged;
         public event EventHandler WorkSchedulesChanged;
         public event EventHandler WorkCalendarsChanged;
+        public event EventHandler DevicesChanged;
         
         // Methods to notify subscribers about data changes
         public void NotifyEmployeesChanged()
@@ -35,6 +36,11 @@ namespace AttandenceDesktop.Services
         public void NotifyWorkCalendarsChanged()
         {
             WorkCalendarsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        
+        public void NotifyDevicesChanged()
+        {
+            DevicesChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 } 

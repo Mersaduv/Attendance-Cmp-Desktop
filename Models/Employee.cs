@@ -35,6 +35,18 @@ namespace AttandenceDesktop.Models
         [Required(ErrorMessage = "Employee Code is required"), StringLength(20)]
         public string EmployeeCode { get; set; }
         
+        // BEGIN ADD
+        // ZKTeco device integration
+        // Numeric user ID stored on the device. Nullable until کاربر را روی دستگاه ثبت کنیم
+        [StringLength(50)]
+        public string? ZkUserId { get; set; }
+
+        // Optional fingerprint templates pulled from / sent to the device (ANSI/ISO or proprietary format)
+        // Keeping as BLOBs (byte[]) to remain database-agnostic. Can be null when templates فقط روی دستگاه نگه داشته می‌شوند.
+        public byte[]? FingerprintTemplate1 { get; set; }
+        public byte[]? FingerprintTemplate2 { get; set; }
+        // END ADD
+        
         [Required(ErrorMessage = "Position is required"), StringLength(100)]
         public string Position { get; set; }
         
@@ -49,6 +61,12 @@ namespace AttandenceDesktop.Models
         // Required work hours per day (used when IsFlexibleHours is true)
         // This defines how many hours the employee must work each day, regardless of when they work
         public double RequiredWorkHoursPerDay { get; set; } = 8.0;
+        
+        // BEGIN ADD
+        // Internal identifier (digits or letters) used for attendance devices
+        [StringLength(50)]
+        public string? EmployeeNumber { get; set; }
+        // END ADD
         
         [NotMapped]
         public string FullName => $"{FirstName} {LastName}";

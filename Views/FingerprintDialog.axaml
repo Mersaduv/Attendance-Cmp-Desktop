@@ -1,0 +1,112 @@
+<Window x:Name="rootWin" xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:AttandenceDesktop.ViewModels"
+        xmlns:converters="using:AttandenceDesktop.Converters"
+        mc:Ignorable="d"
+        x:Class="AttandenceDesktop.Views.FingerprintDialog"
+        x:DataType="vm:FingerprintDialogViewModel"
+        Width="400" Height="320"
+        Title="Fingerprint (ZKTeco)" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <converters:BoolToStatusConverter x:Key="BoolToStatus"/>
+        <converters:IntEqualsConverter x:Key="IntEquals"/>
+    </Window.Resources>
+
+    <Window.Styles>
+        <!-- Circular style for the finger selection buttons -->
+        <Style Selector="ToggleButton">
+            <!-- Ensure the button is a circle -->
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+
+            <!-- Center the content within the circle -->
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+
+            <!-- Use a circular border as the control template -->
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="16"
+                            Width="{TemplateBinding Width}"
+                            Height="{TemplateBinding Height}">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Content="{TemplateBinding Content}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          FontSize="{TemplateBinding FontSize}"
+                                          FontWeight="{TemplateBinding FontWeight}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+
+            <!-- Default visual states -->
+            <Setter Property="Background" Value="#DDDDDD"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="20" Spacing="12">
+        <TextBlock Text="{Binding EmployeeName}" FontWeight="Bold" FontSize="16"/>
+
+        <TextBlock Text="User ID (ZKTeco)" Classes="label"/>
+        <TextBox Text="{Binding ZkUserId}"/>
+
+        <TextBlock Text="Device" Classes="label"/>
+        <ComboBox ItemsSource="{Binding AvailableDevices}" SelectedItem="{Binding SelectedDevice}" DisplayMemberBinding="{Binding Name}" />
+
+        <TextBlock Text="Finger" Classes="label"/>
+        <Border Height="450" Width="600" HorizontalAlignment="Center">
+            <Grid>
+                <Image Source="avares://AttandenceDesktop/Assets/hand.png" Stretch="Uniform"/>
+                <Canvas>
+                    <!-- Left hand (viewer left) -->
+                    <!-- Little finger (0) -->
+                    <ToggleButton Width="32" Height="32" Content="0" Command="{Binding SelectFingerCommand}" CommandParameter="0"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=0}" Canvas.Left="85" Canvas.Top="160" Opacity="0.8"/>
+                    <!-- Ring finger (1) -->
+                    <ToggleButton Width="32" Height="32" Content="1" Command="{Binding SelectFingerCommand}" CommandParameter="1"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=1}" Canvas.Left="121" Canvas.Top="130" Opacity="0.8"/>
+                    <!-- Middle finger (2) -->
+                    <ToggleButton Width="32" Height="32" Content="2" Command="{Binding SelectFingerCommand}" CommandParameter="2"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=2}" Canvas.Left="155" Canvas.Top="110" Opacity="0.8"/>
+                    <!-- Index finger (3) -->
+                    <ToggleButton Width="32" Height="32" Content="3" Command="{Binding SelectFingerCommand}" CommandParameter="3"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=3}" Canvas.Left="190" Canvas.Top="135" Opacity="0.8"/>
+                    <!-- Thumb (4) -->
+                    <ToggleButton Width="32" Height="32" Content="4" Command="{Binding SelectFingerCommand}" CommandParameter="4"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=4}" Canvas.Left="240" Canvas.Top="205" Opacity="0.8"/>
+
+                    <!-- Right hand (viewer right) -->
+                    <!-- Thumb (5) -->
+                    <ToggleButton Width="32" Height="32" Content="5" Command="{Binding SelectFingerCommand}" CommandParameter="5"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=5}" Canvas.Left="335" Canvas.Top="205" Opacity="0.8"/>
+                    <!-- Index finger (6) -->
+                    <ToggleButton Width="32" Height="32" Content="6" Command="{Binding SelectFingerCommand}" CommandParameter="6"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=6}" Canvas.Left="395" Canvas.Top="135" Opacity="0.8"/>
+                    <!-- Middle finger (7) -->
+                    <ToggleButton Width="32" Height="32" Content="7" Command="{Binding SelectFingerCommand}" CommandParameter="7"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=7}" Canvas.Left="425" Canvas.Top="110" Opacity="0.8"/>
+                    <!-- Ring finger (8) -->
+                    <ToggleButton Width="32" Height="32" Content="8" Command="{Binding SelectFingerCommand}" CommandParameter="8"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=8}" Canvas.Left="457" Canvas.Top="130" Opacity="0.8"/>
+                    <!-- Little finger (9) -->
+                    <ToggleButton Width="32" Height="32" Content="9" Command="{Binding SelectFingerCommand}" CommandParameter="9"
+                                  IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=9}" Canvas.Left="490" Canvas.Top="155" Opacity="0.8"/>
+                </Canvas>
+            </Grid>
+        </Border>
+
+        <Button Content="Capture Fingerprint" Command="{Binding CaptureCommand}" Width="160" Margin="0,10,0,0"/>
+        <TextBlock Text="{Binding IsFingerprintRegistered, Converter={StaticResource BoolToStatus}}"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,20,0,0">
+            <Button Content="Cancel" Click="OnCancel" Width="100"/>
+            <Button Content="Save" Click="OnSave" Width="100" Background="#2196F3" Foreground="White"/>
+        </StackPanel>
+    </StackPanel>
+</Window> 

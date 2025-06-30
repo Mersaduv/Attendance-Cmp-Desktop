@@ -39,6 +39,10 @@
                         Command="{Binding ShowEmployeesCommand}" 
                         Classes="nav" />
                 
+                <Button Content="Devices"
+                        Command="{Binding ShowDevicesCommand}"
+                        Classes="nav" />
+                
                 <Button Content="Attendance" 
                         Command="{Binding ShowAttendanceCommand}" 
                         Classes="nav" />

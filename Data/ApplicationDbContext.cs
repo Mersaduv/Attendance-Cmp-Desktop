@@ -19,6 +19,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Attendance> Attendances { get; set; }
     public DbSet<WorkSchedule> WorkSchedules { get; set; }
     public DbSet<WorkCalendar> WorkCalendars { get; set; }
+    public DbSet<Device> Devices { get; set; }
+    public DbSet<PunchLog> PunchLogs { get; set; }
     
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -93,6 +95,20 @@ public class ApplicationDbContext : DbContext
             .WithMany()
             .HasForeignKey(a => a.EmployeeId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Configure Device entity
+        builder.Entity<Device>()
+            .HasMany(d => d.PunchLogs)
+            .WithOne(p => p.Device)
+            .HasForeignKey(p => p.DeviceId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Configure PunchLog entity
+        builder.Entity<PunchLog>()
+            .HasOne(p => p.Employee)
+            .WithMany()
+            .HasForeignKey(p => p.EmployeeId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Ensure IsOvertime is properly mapped
         builder.Entity<Attendance>()

@@ -159,5 +159,17 @@ namespace AttandenceDesktop.Services
             }
             return !await ctx.Employees.AnyAsync(e => e.EmployeeCode == employeeCode);
         }
+
+        public async Task UpdateFingerprintAsync(int employeeId, string zkUserId, byte[]? template)
+        {
+            using var ctx = NewCtx();
+            var emp = await ctx.Employees.FindAsync(employeeId);
+            if (emp == null) return;
+            emp.ZkUserId = zkUserId;
+            if (template != null)
+                emp.FingerprintTemplate1 = template;
+            await ctx.SaveChangesAsync();
+            _dataRefreshService.NotifyEmployeesChanged();
+        }
     }
 } 

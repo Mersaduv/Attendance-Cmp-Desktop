@@ -21,6 +21,10 @@ namespace AttandenceDesktop.ViewModels
         private Department _selectedDepartment;
         private bool _isFlexibleHours;
         private double _requiredWorkHoursPerDay = 8.0;
+        private string? _zkUserId;
+        private bool _isFingerprintRegistered;
+        private byte[]? _fingerprintTemplate1;
+        private string? _employeeNumber;
         
         public int Id
         {
@@ -104,6 +108,40 @@ namespace AttandenceDesktop.ViewModels
             set => SetProperty(ref _requiredWorkHoursPerDay, value, true);
         }
         
+        [Required]
+        public string? ZkUserId
+        {
+            get => _zkUserId;
+            set => SetProperty(ref _zkUserId, value, true);
+        }
+        
+        public bool IsFingerprintRegistered
+        {
+            get => _isFingerprintRegistered;
+            set => SetProperty(ref _isFingerprintRegistered, value);
+        }
+        
+        public byte[]? FingerprintTemplate1
+        {
+            get => _fingerprintTemplate1;
+            set => SetProperty(ref _fingerprintTemplate1, value);
+        }
+        
+        [Required]
+        [StringLength(50)]
+        public string? EmployeeNumber
+        {
+            get => _employeeNumber;
+            set
+            {
+                if(SetProperty(ref _employeeNumber, value, true))
+                {
+                    if(string.IsNullOrWhiteSpace(ZkUserId) && !string.IsNullOrWhiteSpace(value))
+                        ZkUserId = value;
+                }
+            }
+        }
+        
         public List<Department> AvailableDepartments
         {
             get => _availableDepartments;
@@ -137,11 +175,14 @@ namespace AttandenceDesktop.ViewModels
                 Email = Email,
                 PhoneNumber = PhoneNumber,
                 Position = Position,
-                EmployeeCode = EmployeeCode,
+                EmployeeCode = string.IsNullOrWhiteSpace(EmployeeCode) ? EmployeeNumber : EmployeeCode,
+                EmployeeNumber = EmployeeNumber,
                 DepartmentId = DepartmentId,
                 HireDate = HireDate,
                 IsFlexibleHours = IsFlexibleHours,
-                RequiredWorkHoursPerDay = RequiredWorkHoursPerDay
+                RequiredWorkHoursPerDay = RequiredWorkHoursPerDay,
+                ZkUserId = ZkUserId,
+                FingerprintTemplate1 = FingerprintTemplate1
             };
         }
         
@@ -156,10 +197,14 @@ namespace AttandenceDesktop.ViewModels
             PhoneNumber = employee.PhoneNumber;
             Position = employee.Position;
             EmployeeCode = employee.EmployeeCode;
+            EmployeeNumber = string.IsNullOrWhiteSpace(employee.EmployeeNumber) ? employee.EmployeeCode : employee.EmployeeNumber;
             DepartmentId = employee.DepartmentId;
             HireDate = employee.HireDate;
             IsFlexibleHours = employee.IsFlexibleHours;
             RequiredWorkHoursPerDay = employee.RequiredWorkHoursPerDay;
+            ZkUserId = employee.ZkUserId;
+            FingerprintTemplate1 = employee.FingerprintTemplate1;
+            IsFingerprintRegistered = employee.FingerprintTemplate1 != null && employee.FingerprintTemplate1.Length > 0;
         }
     }
 } 
