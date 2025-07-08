@@ -21,11 +21,25 @@ namespace AttandenceDesktop.Services
     /// </summary>
     public class ExportService
     {
-        // Static constructor to set QuestPDF license once when the class is first used
+        // Static flag to track if QuestPDF initialization has been attempted
+        private static bool _questPdfInitialized = false;
+
+        // Modified static constructor to handle exceptions more gracefully
         static ExportService()
         {
-            // Set QuestPDF license to Community to avoid license validation errors
-            QuestPDF.Settings.License = LicenseType.Community;
+            try
+            {
+                // Set QuestPDF license to Community to avoid license validation errors
+                QuestPDF.Settings.License = LicenseType.Community;
+                _questPdfInitialized = true;
+                Program.LogMessage("QuestPDF initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't rethrow - this allows application to continue if PDF export isn't used
+                _questPdfInitialized = false;
+                Program.LogMessage($"Warning: QuestPDF initialization failed: {ex.Message}. PDF export will be unavailable.");
+            }
         }
         
         public async Task ExportAsync(IEnumerable<AttendanceReportItem> data, string format, string filePath)
@@ -47,6 +61,10 @@ namespace AttandenceDesktop.Services
                     await ExportToCsvAsync(list, filePath);
                     break;
                 case "pdf":
+                    if (!_questPdfInitialized)
+                    {
+                        throw new InvalidOperationException("PDF export is not available due to initialization failure. Please use another export format.");
+                    }
                     await ExportToPdfAsync(list, filePath);
                     break;
                 case "word":

@@ -9,6 +9,11 @@ using AttandenceDesktop.Data;
 using AttandenceDesktop.Services;
 using Avalonia.Controls.ApplicationLifetimes;
 using AttandenceDesktop.Models;
+using AttandenceDesktop.Views;
+using Avalonia.Data.Core.Plugins;
+using Avalonia.Markup.Xaml;
+using AttandenceDesktop.ViewModels;
+using Avalonia.Media;
 
 namespace AttandenceDesktop;
 
@@ -30,6 +35,10 @@ sealed class Program
         // Create or clear the log file
         File.WriteAllText(logPath, $"=== Application Log Started at {DateTime.Now} ===\n\n");
         LogMessage("Application starting");
+        LogMessage($"Is64BitProcess: {Environment.Is64BitProcess}");
+        
+        // Try to setup ZKTeco DLLs
+        SetupZkTecoDlls();
         
         try
         {
@@ -239,32 +248,73 @@ sealed class Program
     private static void EnsureDatabaseExists()
     {
         string dbPath = Path.Combine(AppContext.BaseDirectory, "TimeAttendance.db");
+        bool dbExists = File.Exists(dbPath);
         
-        // Only create the database if it doesn't exist
-        if (!File.Exists(dbPath))
+        LogMessage($"Database path: {dbPath}, exists: {dbExists}");
+        
+        if (dbExists)
         {
-            LogMessage("Database file not found. Creating new database with seed data...");
+            LogMessage("Database file exists, checking schema...");
             
-            // Create database structure
-            var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
-            optionsBuilder.UseSqlite($"Data Source={dbPath}");
-            using (var context = new ApplicationDbContext(optionsBuilder.Options))
+            try
             {
-                // Create database and schema
-                context.Database.EnsureCreated();
-                
-                // Add seed data
-                SeedInitialData(context);
-                
-                context.SaveChanges();
+                // Check if the database is accessible by opening a connection
+                using (var db = ApplicationDbContext.Create())
+                {
+                    // Force a simple query to verify the database is valid
+                    var departmentCount = db.Departments.Count();
+                    LogMessage($"Database accessible, contains {departmentCount} departments");
+                }
             }
-            
-            // Add some sample data for first-time use
-            SeedAttendanceData.CreateSampleAttendanceData();
+            catch (Exception ex)
+            {
+                LogMessage($"Error accessing database: {ex.Message}");
+                LogMessage("Database exists but may be corrupt or incompatible. Will attempt to recreate it.");
+                
+                try
+                {
+                    // Backup the old database before recreating
+                    string backupPath = $"{dbPath}.bak_{DateTime.Now:yyyyMMdd_HHmmss}";
+                    File.Copy(dbPath, backupPath);
+                    LogMessage($"Created backup of database at {backupPath}");
+                    
+                    // Delete the corrupt database
+                    File.Delete(dbPath);
+                    LogMessage("Deleted corrupt database");
+                    
+                    // Set dbExists to false to recreate the database
+                    dbExists = false;
+                }
+                catch (Exception backupEx)
+                {
+                    LogMessage($"Error backing up/deleting corrupt database: {backupEx.Message}");
+                    throw new Exception("Unable to repair database. Please delete TimeAttendance.db manually and restart the application.", ex);
+                }
+            }
         }
-        else
+        
+        if (!dbExists)
         {
-            LogMessage("Database file exists. Using existing database.");
+            LogMessage("Database does not exist, creating...");
+            
+            try
+            {
+                using (var db = ApplicationDbContext.Create())
+                {
+                    // This will create the database and schema
+                    db.Database.EnsureCreated();
+                    LogMessage("Database created successfully");
+                    
+                    // Seed initial data
+                    SeedInitialData(db);
+                    LogMessage("Initial data seeded");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error creating database: {ex.Message}");
+                throw new Exception("Failed to initialize database. Check your SQLite connection and restart the application.", ex);
+            }
         }
     }
     
@@ -426,7 +476,7 @@ sealed class Program
     // This method is for logging messages to the app.log file
     public static void LogMessage(string message)
     {
-        string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.log");
+        string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_log.txt");
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
         string logMessage = $"[{timestamp}] {message}\n";
         
@@ -447,4 +497,140 @@ sealed class Program
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace();
+
+    /// <summary>
+    /// Attempts to set up the ZKTeco DLLs by looking for them in common locations and copying to the native folders
+    /// </summary>
+    private static void SetupZkTecoDlls()
+    {
+        try
+        {
+            LogMessage("Setting up ZKTeco DLLs...");
+            LogMessage($"Process is running as {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+            
+            // Create native directories if they don't exist
+            string x86Dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "native", "x86");
+            if (!Directory.Exists(x86Dir)) Directory.CreateDirectory(x86Dir);
+            
+            // For 32-bit mode, we only need the x86 folder
+            LogMessage($"Native x86 directory: {x86Dir}");
+            
+            // Look for zkemkeeper.dll in common locations
+            string[] searchPaths = new[] {
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SDK"),
+                @"..\connectTest\GhalibHRAttendance\SDK",
+                @"D:\config\Fingerprint\sdk",
+                @"C:\Program Files\ZKTeco\ZKBioTime\sdk",
+                @"C:\Program Files (x86)\ZKTeco\ZKBioTime\sdk",
+                AppDomain.CurrentDomain.BaseDirectory
+            };
+            
+            bool foundDll = false;
+            foreach (var path in searchPaths)
+            {
+                if (!Directory.Exists(path)) continue;
+                
+                LogMessage($"Checking for ZKTeco DLLs in {path}");
+                
+                string zkemkeeperDll = Path.Combine(path, "zkemkeeper.dll");
+                if (File.Exists(zkemkeeperDll))
+                {
+                    LogMessage($"Found zkemkeeper.dll at {zkemkeeperDll}");
+                    foundDll = true;
+                    
+                    try
+                    {
+                        // Copy to native folder - we're using 32-bit mode so only copy to x86
+                        File.Copy(zkemkeeperDll, Path.Combine(x86Dir, "zkemkeeper.dll"), true);
+                        LogMessage("Copied zkemkeeper.dll to native x86 directory");
+                        
+                        // Copy any other DLLs in the same directory
+                        foreach (var dll in Directory.GetFiles(path, "*.dll"))
+                        {
+                            string fileName = Path.GetFileName(dll);
+                            if (fileName != "zkemkeeper.dll")
+                            {
+                                File.Copy(dll, Path.Combine(x86Dir, fileName), true);
+                                LogMessage($"Copied {fileName} to native x86 directory");
+                            }
+                        }
+                        
+                        // Also ensure the DLLs are in the application directory
+                        File.Copy(zkemkeeperDll, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "zkemkeeper.dll"), true);
+                        LogMessage("Copied zkemkeeper.dll to application directory");
+                        
+                        // Update application PATH environment variable
+                        try 
+                        {
+                            string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                            if (!currentPath.Contains(x86Dir))
+                            {
+                                Environment.SetEnvironmentVariable("PATH", $"{x86Dir};{currentPath}");
+                                LogMessage("Added x86 directory to PATH environment variable");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogMessage($"Error updating PATH: {ex.Message}");
+                        }
+                        
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"Error copying DLLs: {ex.Message}");
+                    }
+                }
+            }
+            
+            if (!foundDll)
+            {
+                LogMessage("WARNING: Could not find zkemkeeper.dll in any of the search paths");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Error setting up ZKTeco DLLs: {ex.Message}");
+        }
+    }
+    
+    private static void RunRegsvr32(string regsvr32Path, string dllPath)
+    {
+        try
+        {
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = regsvr32Path,
+                    Arguments = $"/s \"{dllPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                }
+            };
+            
+            process.Start();
+            string output = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            
+            if (!string.IsNullOrEmpty(output))
+            {
+                LogMessage($"regsvr32 output: {output}");
+            }
+            
+            if (!string.IsNullOrEmpty(error))
+            {
+                LogMessage($"regsvr32 error: {error}");
+            }
+            
+            LogMessage($"regsvr32 exit code: {process.ExitCode}");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"Error running regsvr32: {ex.Message}");
+        }
+    }
 }

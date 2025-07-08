@@ -32,6 +32,13 @@ public class Device
 
     [StringLength(50)]
     public string? SerialNumber { get; set; }
+    
+    /// <summary>
+    /// رمز ارتباطی برای اتصال به دستگاه (Communication Password)
+    /// معمولا 0 است، اما گاهی به صورت دیگری تنظیم می‌شود
+    /// </summary>
+    [StringLength(50)]
+    public string? CommunicationPassword { get; set; } = "0";
 
     /// <summary>
     /// آخرین باری که لاگ‌ها از این دستگاه خوانده شده است.

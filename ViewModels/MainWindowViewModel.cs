@@ -33,7 +33,7 @@ public partial class MainWindowViewModel : ObservableObject
         Reports = new ReportViewModel();
         var mockRefresh = new DataRefreshService();
         var mockDeviceService = new DeviceService(()=> null!, mockRefresh);
-        Devices = new DeviceViewModel(mockDeviceService, mockRefresh);
+        Devices = new DeviceViewModel(mockDeviceService);
         
         // Create mock services for design-time
         var mockReportService = new ReportService(

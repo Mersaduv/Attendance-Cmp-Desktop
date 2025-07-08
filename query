@@ -1,0 +1,10 @@
+q
+sc query | findstr /i "ZK"
+q
+Get-Service | Where-Object {$_.DisplayName -like "*ZK*" -or $_.Name -like "*ZK*"}
+q
+netstat -ano | findstr "4370"
+q
+netstat -ano | findstr ":4370"
+q
+ping 172.16.0.86

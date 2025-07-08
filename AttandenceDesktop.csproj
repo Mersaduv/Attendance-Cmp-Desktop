@@ -7,11 +7,17 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <PlatformTarget>x86</PlatformTarget>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
+    <Content Include="native\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Include="SDK\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -43,6 +49,14 @@
     <PackageReference Include="ClosedXML" Version="0.104.0" />
     <PackageReference Include="QuestPDF" Version="2024.3.0" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.0.1" />
-    <PackageReference Include="ZkTecoFingerPrint" Version="1.2.1" />
+    <PackageReference Include="System.Runtime.InteropServices" Version="4.3.0" />
   </ItemGroup>
+  
+  <Target Name="CopyCustomContent" AfterTargets="AfterBuild">
+    <Copy SourceFiles="SDK\plcommpro.dll" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="SDK\commpro.dll" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="SDK\comms.dll" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="SDK\zkemkeeper.dll" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="SDK\zkemsdk.dll" DestinationFolder="$(OutDir)" />
+  </Target>
 </Project>

@@ -6,7 +6,7 @@
         mc:Ignorable="d"
         x:Class="AttandenceDesktop.Views.DeviceDialog"
         x:DataType="vm:DeviceDialogViewModel"
-        Width="480" Height="480"
+        Width="480" Height="520"
         Title="{Binding WindowTitle}" WindowStartupLocation="CenterOwner">
     <StackPanel Margin="20" Spacing="10">
         <TextBlock Text="Name" Classes="label"/>
@@ -23,6 +23,9 @@
 
         <TextBlock Text="Serial Number" Classes="label"/>
         <TextBox Text="{Binding SerialNumber}"/>
+        
+        <TextBlock Text="Communication Password" Classes="label" ToolTip.Tip="Password for SDK connection, usually 0 but may be different. This is the 'Comm Key' in ZKTime software, found under the Communication tab. For most devices, the default is 0."/>
+        <TextBox Text="{Binding CommunicationPassword}" Watermark="Default: 0"/>
 
         <TextBlock Text="Description" Classes="label"/>
         <TextBox Text="{Binding Description}" AcceptsReturn="True" Height="80"/>

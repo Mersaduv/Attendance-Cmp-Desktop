@@ -16,14 +16,16 @@ public partial class DeviceDialogViewModel : ObservableValidator
     [ObservableProperty] private int _port = 4370;
     [ObservableProperty] private int _machineNumber = 1;
     [ObservableProperty] private string? _serialNumber;
+    [ObservableProperty] private string? _communicationPassword = "0";
     [ObservableProperty] private string? _description;
 
-    public string WindowTitle => _id == 0 ? "Add Device" : "Edit Device";
+    public string WindowTitle => Id == 0 ? "Add Device" : "Edit Device";
 
     public Device ToDevice() => new()
     {
         Id = Id, Name = Name, IPAddress = IpAddress, Port = Port,
         MachineNumber = MachineNumber, SerialNumber = SerialNumber,
+        CommunicationPassword = CommunicationPassword,
         Description = Description
     };
 
@@ -31,6 +33,7 @@ public partial class DeviceDialogViewModel : ObservableValidator
     {
         Id = d.Id; Name = d.Name; IpAddress = d.IPAddress; Port = d.Port;
         MachineNumber = d.MachineNumber; SerialNumber = d.SerialNumber;
+        CommunicationPassword = d.CommunicationPassword;
         Description = d.Description;
     }
 } 

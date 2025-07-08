@@ -42,5 +42,40 @@
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
+
+        <!-- ZKTeco Data Extraction Section -->
+        <Border Classes="card">
+            <StackPanel Spacing="12">
+                <TextBlock Text="ZKTeco Data Extraction" FontWeight="Bold" FontSize="16" Margin="0,0,0,8"/>
+                
+                <TextBlock Text="Extract data from the selected ZKTeco device using methods similar to the API endpoints:" TextWrapping="Wrap"/>
+                
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,8">
+                    <Button Content="Get Users" Command="{Binding ExtractUsersCommand}" 
+                            IsEnabled="{Binding !IsBusy}" Width="120">
+                        <ToolTip.Tip>Extract all users and their fingerprint data (similar to /api/users)</ToolTip.Tip>
+                    </Button>
+                            
+                    <Button Content="Get All Data" Command="{Binding ExtractAllDataCommand}" 
+                            IsEnabled="{Binding !IsBusy}" Width="120">
+                        <ToolTip.Tip>Extract all data including users, templates, and logs (similar to /api/all-data)</ToolTip.Tip>
+                    </Button>
+                            
+                    <Button Content="Get Attendance" Command="{Binding ExtractAttendanceLogsCommand}" 
+                            IsEnabled="{Binding !IsBusy}" Width="120">
+                        <ToolTip.Tip>Extract attendance logs for the last three days (similar to /api/attendance)</ToolTip.Tip>
+                    </Button>
+                </StackPanel>
+                
+                <!-- Progress Indicator -->
+                <StackPanel IsVisible="{Binding IsBusy}">
+                    <ProgressBar IsIndeterminate="True" Height="4" Margin="0,4,0,8"/>
+                    <TextBlock Text="{Binding StatusMessage}" HorizontalAlignment="Center" FontStyle="Italic"/>
+                </StackPanel>
+                
+                <TextBlock Text="Data will be saved as JSON files in the application directory" 
+                           Foreground="Gray" FontStyle="Italic" Margin="0,8,0,0"/>
+            </StackPanel>
+        </Border>
     </StackPanel>
 </UserControl> 

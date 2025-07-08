@@ -10,22 +10,27 @@ using System;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using System.Threading.Tasks;
+using System.IO;
+using System.Text.Json;
 
 namespace AttandenceDesktop.ViewModels;
 
 public partial class DeviceViewModel : ViewModelBase
 {
     private readonly DeviceService _service;
-    private readonly DataRefreshService _refresh;
+    private readonly ZkDataExtractionService _zkDataService;
 
     public ObservableCollection<Device> Devices { get; } = new();
 
     [ObservableProperty] private Device? _selectedDevice;
+    [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private string _statusMessage = string.Empty;
 
-    public DeviceViewModel(DeviceService service, DataRefreshService refresh)
+    public DeviceViewModel(DeviceService service)
     {
-        _service = service; _refresh = refresh;
-        _refresh.DevicesChanged += async (_, __) => await LoadAsync();
+        _service = service;
+        _zkDataService = new ZkDataExtractionService();
         _ = LoadAsync();
     }
 
@@ -115,15 +120,184 @@ public partial class DeviceViewModel : ViewModelBase
 
         try
         {
-            using var zk = new ZkTecoConnectionService();
-            bool connected = zk.Connect(device);
-            var logs = connected ? zk.FetchLogs(device) : new List<PunchLog>();
+            Program.LogMessage("=========== BEGINNING FETCH LOGS OPERATION ===========");
+            Program.LogMessage($"Device: {device.Name}, IP: {device.IPAddress}, Port: {device.Port}, Machine: {device.MachineNumber}");
+            Program.LogMessage($"Current process is {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+            
+            using var sdk = new ZkemkeeperConnectionService();
+            Program.LogMessage("ZkemkeeperConnectionService created successfully");
+            
+            bool connected = sdk.Connect(device);
+            Program.LogMessage($"Connection result: {(connected ? "SUCCESS" : "FAILED")}");
+            
+            var logs = connected ? sdk.FetchLogs(device) : new List<PunchLog>();
 
-            await ShowMessageAsync("Device Test", connected ? $"Connection OK. Logs retrieved: {logs.Count}." : "Failed to connect to device.");
+            // Log device details and fetched logs
+            Program.LogMessage($"Retrieved {logs.Count} logs from device");
+            
+            // Log each individual record
+            if (logs.Count > 0)
+            {
+                Program.LogMessage("Device log records:");
+                foreach (var log in logs)
+                {
+                    Program.LogMessage($"  - Employee ID: {log.EmployeeId}, Time: {log.PunchTime}, Type: {log.PunchType}, Device Row ID: {log.DeviceRowId}");
+                }
+            }
+            
+            Program.LogMessage("=========== COMPLETED FETCH LOGS OPERATION ===========");
+
+            await ShowMessageAsync("Device Test", 
+                connected 
+                    ? $"Connection OK. {logs.Count} logs retrieved and saved to app_log.txt." 
+                    : "Failed to connect to device.");
         }
         catch(Exception ex)
         {
-            await ShowMessageAsync("Error", ex.Message);
+            Program.LogMessage("=========== ERROR IN FETCH LOGS OPERATION ===========");
+            Program.LogMessage($"Error details: {ex.Message}");
+            Program.LogMessage($"Exception type: {ex.GetType().FullName}");
+            Program.LogMessage($"Stack trace: {ex.StackTrace}");
+            
+            if (ex.InnerException != null)
+            {
+                Program.LogMessage($"Inner exception: {ex.InnerException.Message}");
+                Program.LogMessage($"Inner exception type: {ex.InnerException.GetType().FullName}");
+                Program.LogMessage($"Inner exception stack trace: {ex.InnerException.StackTrace}");
+            }
+            
+            Program.LogMessage("==================================================");
+            
+            await ShowMessageAsync("Error", $"{ex.Message}\n\nDetails have been logged to app_log.txt");
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExtractUsers(Device? device)
+    {
+        device ??= SelectedDevice;
+        if (device == null) return;
+        
+        IsBusy = true;
+        StatusMessage = "Extracting users data...";
+        
+        try
+        {
+            Program.LogMessage("=========== BEGINNING USER DATA EXTRACTION ===========");
+            Program.LogMessage($"Device: {device.Name}, IP: {device.IPAddress}, Machine: {device.MachineNumber}");
+            
+            var users = await _zkDataService.GetUsersWithFingerprintsAsync(device);
+            
+            // Save the result to a JSON file
+            var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"device_{device.Id}_users.json");
+            await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(users, new JsonSerializerOptions { WriteIndented = true }));
+            
+            Program.LogMessage($"Users data extracted successfully and saved to {filePath}");
+            Program.LogMessage("=========== COMPLETED USER DATA EXTRACTION ===========");
+            
+            await ShowMessageAsync("User Data Extraction", 
+                $"Successfully extracted data for {users.Count} users.\nData saved to {filePath}");
+        }
+        catch (Exception ex)
+        {
+            Program.LogMessage("=========== ERROR IN USER DATA EXTRACTION ===========");
+            Program.LogMessage($"Error details: {ex.Message}");
+            Program.LogMessage($"Stack trace: {ex.StackTrace}");
+            
+            await ShowMessageAsync("Error", $"Failed to extract user data: {ex.Message}\n\nDetails have been logged to app_log.txt");
+        }
+        finally
+        {
+            IsBusy = false;
+            StatusMessage = string.Empty;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExtractAllData(Device? device)
+    {
+        device ??= SelectedDevice;
+        if (device == null) return;
+        
+        IsBusy = true;
+        StatusMessage = "Extracting all device data...";
+        
+        try
+        {
+            Program.LogMessage("=========== BEGINNING ALL DATA EXTRACTION ===========");
+            Program.LogMessage($"Device: {device.Name}, IP: {device.IPAddress}, Machine: {device.MachineNumber}");
+            
+            var allData = await _zkDataService.GetAllDeviceDataAsync(device);
+            
+            // Save the result to a JSON file
+            var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"device_{device.Id}_all_data.json");
+            await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(allData, new JsonSerializerOptions { WriteIndented = true }));
+            
+            Program.LogMessage($"All device data extracted successfully and saved to {filePath}");
+            Program.LogMessage("=========== COMPLETED ALL DATA EXTRACTION ===========");
+            
+            await ShowMessageAsync("All Data Extraction", 
+                $"Successfully extracted all device data.\nData saved to {filePath}");
+        }
+        catch (Exception ex)
+        {
+            Program.LogMessage("=========== ERROR IN ALL DATA EXTRACTION ===========");
+            Program.LogMessage($"Error details: {ex.Message}");
+            Program.LogMessage($"Stack trace: {ex.StackTrace}");
+            
+            await ShowMessageAsync("Error", $"Failed to extract all data: {ex.Message}\n\nDetails have been logged to app_log.txt");
+        }
+        finally
+        {
+            IsBusy = false;
+            StatusMessage = string.Empty;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExtractAttendanceLogs(Device? device)
+    {
+        device ??= SelectedDevice;
+        if (device == null) return;
+        
+        IsBusy = true;
+        StatusMessage = "Extracting attendance logs...";
+        
+        try
+        {
+            Program.LogMessage("=========== BEGINNING ATTENDANCE LOGS EXTRACTION ===========");
+            Program.LogMessage($"Device: {device.Name}, IP: {device.IPAddress}, Machine: {device.MachineNumber}");
+            
+            var attendanceLogs = await _zkDataService.GetAttendanceLogsAsync(device);
+            
+            // Save the result to a JSON file
+            var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"device_{device.Id}_attendance.json");
+            await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(attendanceLogs, new JsonSerializerOptions { WriteIndented = true }));
+            
+            Program.LogMessage($"Attendance logs extracted successfully and saved to {filePath}");
+            Program.LogMessage("=========== COMPLETED ATTENDANCE LOGS EXTRACTION ===========");
+            
+            int logCount = 0;
+            if (attendanceLogs.TryGetValue("totalLogs", out var total) && total is int totalLogs)
+            {
+                logCount = totalLogs;
+            }
+            
+            await ShowMessageAsync("Attendance Logs Extraction", 
+                $"Successfully extracted {logCount} attendance logs.\nData saved to {filePath}");
+        }
+        catch (Exception ex)
+        {
+            Program.LogMessage("=========== ERROR IN ATTENDANCE LOGS EXTRACTION ===========");
+            Program.LogMessage($"Error details: {ex.Message}");
+            Program.LogMessage($"Stack trace: {ex.StackTrace}");
+            
+            await ShowMessageAsync("Error", $"Failed to extract attendance logs: {ex.Message}\n\nDetails have been logged to app_log.txt");
+        }
+        finally
+        {
+            IsBusy = false;
+            StatusMessage = string.Empty;
         }
     }
 } 
