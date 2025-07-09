@@ -62,4 +62,45 @@ namespace AttandenceDesktop.Converters
             throw new NotImplementedException();
         }
     }
+
+    public class StatusColorConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is string status)
+            {
+                if (string.IsNullOrWhiteSpace(status))
+                {
+                    return new SolidColorBrush(Colors.Gray);
+                }
+                
+                if (status.StartsWith("Error", StringComparison.OrdinalIgnoreCase) || 
+                    status.StartsWith("Failed", StringComparison.OrdinalIgnoreCase) ||
+                    status.Contains("failed") || 
+                    status.Contains("error"))
+                {
+                    return new SolidColorBrush(Colors.Red);
+                }
+                
+                if (status.StartsWith("Sync completed", StringComparison.OrdinalIgnoreCase) || 
+                    status.Contains("successfully"))
+                {
+                    return new SolidColorBrush(Colors.Green);
+                }
+                
+                if (status.StartsWith("Connecting", StringComparison.OrdinalIgnoreCase) || 
+                    status.StartsWith("Syncing", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SolidColorBrush(Colors.Blue);
+                }
+            }
+            
+            return new SolidColorBrush(Colors.Gray);
+        }
+        
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
 } 

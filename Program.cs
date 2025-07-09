@@ -117,24 +117,11 @@ sealed class Program
             // Check for debug direct seed mode - Special argument that directly calls seed method and exits
             if (args.Length > 0 && args[0].Equals("--debug-direct-seed", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine("DEBUG MODE: Directly calling ClearAndCreateSampleData method...");
-                LogMessage("DEBUG MODE: Directly calling ClearAndCreateSampleData method");
-                try 
-                {
-                    SeedAttendanceData.ClearAndCreateSampleData();
-                    Console.WriteLine("Seeding completed. Press any key to exit.");
-                    Console.ReadKey();
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"ERROR: {ex.Message}");
-                    Console.WriteLine(ex.StackTrace);
-                    LogMessage($"ERROR in direct seed: {ex.Message}\n{ex.StackTrace}");
-                    Console.WriteLine("Press any key to exit.");
-                    Console.ReadKey();
-                    return;
-                }
+                Console.WriteLine("DEBUG MODE: This feature has been removed");
+                LogMessage("DEBUG MODE: Sample data seeding feature has been removed");
+                Console.WriteLine("Press any key to exit.");
+                Console.ReadKey();
+                return;
             }
             
             // Global exception handlers
@@ -154,18 +141,16 @@ sealed class Program
             {
                 if (args[0].Equals("--regenerate-sample-data", StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine("Regenerating sample data...");
-                    LogMessage("Regenerating sample data from command line argument");
-                    RegenerateSampleData();
-                    Console.WriteLine("Sample data regenerated successfully. Press any key to start the application.");
+                    Console.WriteLine("This feature has been removed.");
+                    LogMessage("Sample data regeneration feature has been removed");
+                    Console.WriteLine("Press any key to start the application.");
                     Console.ReadKey();
                 }
                 else if (args[0].Equals("--clear-reseed-attendance", StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine("Clearing and reseeding attendance data with all status types...");
-                    LogMessage("Clearing and reseeding attendance data from command line argument");
-                    ClearAndReseedAttendanceData();
-                    Console.WriteLine("Attendance data cleared and reseeded successfully. Press any key to start the application.");
+                    Console.WriteLine("This feature has been removed.");
+                    LogMessage("Clear and reseed attendance data feature has been removed");
+                    Console.WriteLine("Press any key to start the application.");
                     Console.ReadKey();
                 }
                 else if (args[0].Equals("--clear-all-data", StringComparison.OrdinalIgnoreCase))
@@ -193,26 +178,10 @@ sealed class Program
                 }
                 else if (args[0].Equals("--create-sample-data", StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine("Creating comprehensive sample data including both flexible and fixed schedules...");
-                    Console.WriteLine("WARNING: This will CLEAR ALL existing data and create new sample data.");
-                    Console.Write("Do you want to continue? (y/n): ");
-                    string response = Console.ReadLine()?.ToLower() ?? "n";
-                    
-                    if (response == "y" || response == "yes")
-                    {
-                        LogMessage("User confirmed to create comprehensive sample data");
-                        SeedAttendanceData.ClearAndCreateSampleData();
-                        Console.WriteLine("Comprehensive sample data created successfully.");
-                        Console.WriteLine("Press any key to start the application.");
-                        Console.ReadKey();
-                    }
-                    else
-                    {
-                        Console.WriteLine("Operation cancelled by user.");
-                        LogMessage("User cancelled the create sample data operation");
-                        Console.WriteLine("Press any key to start the application.");
-                        Console.ReadKey();
-                    }
+                    Console.WriteLine("This feature has been removed.");
+                    LogMessage("Sample data creation feature has been removed");
+                    Console.WriteLine("Press any key to start the application.");
+                    Console.ReadKey();
                 }
             }
 
@@ -220,9 +189,8 @@ sealed class Program
             // Only create database if it doesn't exist
             EnsureDatabaseExists();
             
-            LogMessage("Updating database schema if needed");
-            // Update database schema if needed
-            DatabaseUpdater.UpdateDatabase();
+            LogMessage("Database ready");
+            // Remove database updater call
             
             LogMessage("Starting Avalonia application");
             BuildAvaloniaApp()
@@ -385,22 +353,6 @@ sealed class Program
     }
 
     /// <summary>
-    /// Regenerates sample attendance data
-    /// </summary>
-    private static void RegenerateSampleData()
-    {
-        try
-        {
-            SeedAttendanceData.CreateSampleAttendanceData();
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"Error regenerating sample data: {ex}");
-            Console.WriteLine($"Error: {ex.Message}");
-        }
-    }
-
-    /// <summary>
     /// Clears all data from the database without creating new sample data
     /// </summary>
     private static void ClearAllData()
@@ -455,23 +407,7 @@ sealed class Program
         }
     }
 
-    /// <summary>
-    /// Clears and reseeds attendance data with all status types (P, A, L, E, O, EA, W, H)
-    /// </summary>
-    private static void ClearAndReseedAttendanceData()
-    {
-        try
-        {
-            LogMessage("Clearing and reseeding attendance data with all status types");
-            SeedAttendanceData.ClearAndCreateSampleData();
-            LogMessage("Attendance data cleared and reseeded successfully");
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"Error clearing and reseeding attendance data: {ex}");
-            Console.WriteLine($"Error: {ex.Message}");
-        }
-    }
+
 
     // This method is for logging messages to the app.log file
     public static void LogMessage(string message)
@@ -632,5 +568,41 @@ sealed class Program
         {
             LogMessage($"Error running regsvr32: {ex.Message}");
         }
+    }
+
+    private static void ConfigureServices(ServiceCollection services)
+    {
+        LogMessage("Configuring services");
+        
+        // Database factory
+        services.AddSingleton<Func<ApplicationDbContext>>(() => new ApplicationDbContextFactory().CreateDbContext(Array.Empty<string>()));
+        
+        // Core services
+        services.AddSingleton<DataRefreshService>();
+        services.AddSingleton<WorkScheduleService>();
+        services.AddSingleton<DepartmentService>();
+        services.AddSingleton<EmployeeService>();
+        services.AddSingleton<DeviceService>();
+        services.AddSingleton<AttendanceService>();
+        services.AddSingleton<WorkCalendarService>();
+        services.AddSingleton<ReportService>();
+        services.AddSingleton<PrintingService>();
+        services.AddSingleton<ExportService>();
+        services.AddSingleton<ReportGridExportService>();
+        services.AddSingleton<DeviceSyncService>();
+        
+        // View models
+        services.AddTransient<MainWindowViewModel>();
+        services.AddTransient<DashboardViewModel>();
+        services.AddTransient<EmployeeViewModel>();
+        services.AddTransient<DepartmentViewModel>();
+        services.AddTransient<WorkScheduleViewModel>();
+        services.AddTransient<WorkCalendarViewModel>();
+        services.AddTransient<AttendanceViewModel>();
+        services.AddTransient<DeviceViewModel>();
+        services.AddTransient<ReportViewModel>();
+        services.AddTransient<OverviewReportViewModel>();
+        
+        LogMessage("Services configured");
     }
 }

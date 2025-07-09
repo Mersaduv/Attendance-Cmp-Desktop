@@ -15,6 +15,7 @@
 
     <UserControl.Resources>
         <converters:NullToBoolConverter x:Key="NullToBool"/>
+        <converters:StatusColorConverter x:Key="StatusColorConverter"/>
     </UserControl.Resources>
 
     <StackPanel Margin="16" Spacing="12">
@@ -22,14 +23,20 @@
         <DockPanel>
             <TextBlock Text="Employees" Classes="header" />
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-                <Button Content="Add" Click="OnAddClick" Classes="success" Width="80" />
-                <!-- <Button Content="Edit" Click="OnEditClick" Classes="primary" Width="80"
-                        IsEnabled="{Binding SelectedEmployee, Converter={StaticResource NullToBool}}" />
-                <Button Content="Delete" Click="OnDeleteClick" Classes="danger" Width="80"
-                        IsEnabled="{Binding SelectedEmployee, Converter={StaticResource NullToBool}}" /> -->
-                <Button Content="Reload" Click="OnDebugLoadClick" Width="80" />
+                <Button Content="Add" Command="{Binding AddCommand}" Classes="success" Width="80" />
+                <Button Content="Sync from Device" Command="{Binding SyncFromDeviceCommand}" Classes="accent" Width="140" />
+                <Button Content="Reload" Command="{Binding LoadEmployeesCommand}" Width="80" />
             </StackPanel>
         </DockPanel>
+        
+        <!-- Sync Status (Visible when syncing) -->
+        <Border Classes="card" IsVisible="{Binding IsSyncing}">
+            <StackPanel Spacing="8" Margin="8">
+                <TextBlock Text="Device Synchronization" FontWeight="Bold" />
+                <ProgressBar IsIndeterminate="True" Height="4" Margin="0,4,0,8"/>
+                <TextBlock Text="{Binding SyncStatus}" FontStyle="Italic" />
+            </StackPanel>
+        </Border>
         
         <!-- Employee List -->
         <Border Classes="card">
@@ -68,9 +75,9 @@
                                         </Grid>
                                     </Border>
                                     <Button Grid.Column="4" Content="Add Fingerprint" Width="120" Height="32" Margin="4,0" Command="{Binding DataContext.AddFingerprintCommand, ElementName=root}" CommandParameter="{Binding}" Classes="primary" HorizontalContentAlignment="Center" />
-                                    <Button Grid.Column="5" Content="Edit" Width="80" Height="32" Margin="4,0" Click="OnRowEditClick" 
+                                    <Button Grid.Column="5" Content="Edit" Width="80" Height="32" Margin="4,0" Command="{Binding DataContext.EditCommand, ElementName=root}" CommandParameter="{Binding}" 
                                             Classes="primary" HorizontalContentAlignment="Center" />
-                                    <Button Grid.Column="6" Content="Delete" Width="80" Height="32" Margin="4,0" Click="OnRowDeleteClick" 
+                                    <Button Grid.Column="6" Content="Delete" Width="80" Height="32" Margin="4,0" Command="{Binding DataContext.DeleteCommand, ElementName=root}" CommandParameter="{Binding}" 
                                             Classes="danger" HorizontalContentAlignment="Center" />
                                 </Grid>
                             </DataTemplate>
@@ -79,6 +86,28 @@
                 </ScrollViewer>
             </StackPanel>
         </Border>
+        
+        <!-- Device Sync Status Section -->
+        <Border Classes="card" IsVisible="{Binding !IsSyncing}">
+            <StackPanel Spacing="8" Margin="8">
+                <TextBlock Text="Device Synchronization" FontWeight="Bold" />
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Grid.Column="0" Text="Status:" FontWeight="SemiBold" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding SyncStatus}" FontStyle="Italic" 
+                               Foreground="{Binding SyncStatus, Converter={StaticResource StatusColorConverter}}" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                    <TextBlock Text="Sync users from:" VerticalAlignment="Center" />
+                    <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" DisplayMemberBinding="{Binding Name}" MinWidth="150" />
+                    <Button Content="Start Sync" Command="{Binding SyncFromDeviceCommand}" Classes="accent" />
+                </StackPanel>
+                <TextBlock Text="This will import employees and fingerprint data from the selected device" FontStyle="Italic" Margin="0,8,0,0" />
+            </StackPanel>
+        </Border>
+        
+        <!-- Error Message -->
+        <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding ErrorMessage, Converter={StaticResource NullToBool}}" 
+                   Foreground="Red" TextWrapping="Wrap" Margin="0,8,0,0" />
         
         <!-- Hidden DataGrid for backward compatibility -->
         <DataGrid x:Name="EmployeesGrid" ItemsSource="{Binding Employees}" AutoGenerateColumns="False" Height="0" Opacity="0"
