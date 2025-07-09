@@ -14,6 +14,7 @@
         <converters:IntEqualsConverter x:Key="IntEquals"/>
         <converters:BoolToBoolConverter x:Key="InvertBool" Invert="True"/>
         <converters:FingerNumberToNameConverter x:Key="FingerNumberToNameConverter"/>
+        <converters:CollectionContainsConverter x:Key="CollectionContains"/>
     </Window.Resources>
 
     <Window.Styles>
@@ -60,6 +61,13 @@
             <Setter Property="Height" Value="36"/>
         </Style>
 
+        <!-- Style for registered fingerprint buttons -->
+        <Style Selector="ToggleButton.registered">
+            <Setter Property="Background" Value="#4CAF50"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="#388E3C"/>
+        </Style>
+
         <!-- Style for hover effect -->
         <Style Selector="ToggleButton:pointerover">
             <Setter Property="Background" Value="#90CAF9"/>
@@ -83,6 +91,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             
             <TextBlock Grid.Row="0" 
@@ -91,7 +100,12 @@
             
             <TextBlock Grid.Row="1" 
                       Text="Click on the hand image to select a finger" 
-                      Classes="label" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                      Classes="label" HorizontalAlignment="Center" Margin="0,0,0,5"/>
+                      
+            <TextBlock Grid.Row="2" 
+                      Text="Green buttons indicate already registered fingerprints" 
+                      Classes="label" HorizontalAlignment="Center" Margin="0,0,0,10"
+                      Foreground="#4CAF50" FontStyle="Italic"/>
         </Grid>
 
         <Border Height="450" Width="600" HorizontalAlignment="Center">
@@ -102,7 +116,8 @@
                     <!-- Little finger (0) -->
                     <ToggleButton Width="32" Height="32" Content="0" Command="{Binding SelectFingerCommand}" CommandParameter="0"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=0}" 
-                                  Canvas.Left="85" Canvas.Top="160" Opacity="0.9">
+                                  Canvas.Left="85" Canvas.Top="160" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=0}">
                         <ToolTip.Tip>
                             <TextBlock Text="Left Little Finger (0)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -111,7 +126,8 @@
                     <!-- Ring finger (1) -->
                     <ToggleButton Width="32" Height="32" Content="1" Command="{Binding SelectFingerCommand}" CommandParameter="1"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=1}" 
-                                  Canvas.Left="121" Canvas.Top="130" Opacity="0.9">
+                                  Canvas.Left="121" Canvas.Top="130" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=1}">
                         <ToolTip.Tip>
                             <TextBlock Text="Left Ring Finger (1)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -120,7 +136,8 @@
                     <!-- Middle finger (2) -->
                     <ToggleButton Width="32" Height="32" Content="2" Command="{Binding SelectFingerCommand}" CommandParameter="2"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=2}" 
-                                  Canvas.Left="155" Canvas.Top="110" Opacity="0.9">
+                                  Canvas.Left="155" Canvas.Top="110" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=2}">
                         <ToolTip.Tip>
                             <TextBlock Text="Left Middle Finger (2)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -129,7 +146,8 @@
                     <!-- Index finger (3) -->
                     <ToggleButton Width="32" Height="32" Content="3" Command="{Binding SelectFingerCommand}" CommandParameter="3"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=3}" 
-                                  Canvas.Left="190" Canvas.Top="135" Opacity="0.9">
+                                  Canvas.Left="190" Canvas.Top="135" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=3}">
                         <ToolTip.Tip>
                             <TextBlock Text="Left Index Finger (3)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -138,7 +156,8 @@
                     <!-- Thumb (4) -->
                     <ToggleButton Width="32" Height="32" Content="4" Command="{Binding SelectFingerCommand}" CommandParameter="4"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=4}" 
-                                  Canvas.Left="240" Canvas.Top="205" Opacity="0.9">
+                                  Canvas.Left="240" Canvas.Top="205" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=4}">
                         <ToolTip.Tip>
                             <TextBlock Text="Left Thumb (4)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -148,7 +167,8 @@
                     <!-- Thumb (5) -->
                     <ToggleButton Width="32" Height="32" Content="5" Command="{Binding SelectFingerCommand}" CommandParameter="5"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=5}" 
-                                  Canvas.Left="335" Canvas.Top="205" Opacity="0.9">
+                                  Canvas.Left="335" Canvas.Top="205" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=5}">
                         <ToolTip.Tip>
                             <TextBlock Text="Right Thumb (5)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -157,7 +177,8 @@
                     <!-- Index finger (6) -->
                     <ToggleButton Width="32" Height="32" Content="6" Command="{Binding SelectFingerCommand}" CommandParameter="6"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=6}" 
-                                  Canvas.Left="395" Canvas.Top="135" Opacity="0.9">
+                                  Canvas.Left="395" Canvas.Top="135" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=6}">
                         <ToolTip.Tip>
                             <TextBlock Text="Right Index Finger (6)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -166,7 +187,8 @@
                     <!-- Middle finger (7) -->
                     <ToggleButton Width="32" Height="32" Content="7" Command="{Binding SelectFingerCommand}" CommandParameter="7"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=7}" 
-                                  Canvas.Left="425" Canvas.Top="110" Opacity="0.9">
+                                  Canvas.Left="425" Canvas.Top="110" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=7}">
                         <ToolTip.Tip>
                             <TextBlock Text="Right Middle Finger (7)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -175,7 +197,8 @@
                     <!-- Ring finger (8) -->
                     <ToggleButton Width="32" Height="32" Content="8" Command="{Binding SelectFingerCommand}" CommandParameter="8"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=8}" 
-                                  Canvas.Left="457" Canvas.Top="130" Opacity="0.9">
+                                  Canvas.Left="457" Canvas.Top="130" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=8}">
                         <ToolTip.Tip>
                             <TextBlock Text="Right Ring Finger (8)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -184,7 +207,8 @@
                     <!-- Little finger (9) -->
                     <ToggleButton Width="32" Height="32" Content="9" Command="{Binding SelectFingerCommand}" CommandParameter="9"
                                   IsChecked="{Binding SelectedFinger, Mode=TwoWay, Converter={StaticResource IntEquals}, ConverterParameter=9}" 
-                                  Canvas.Left="490" Canvas.Top="155" Opacity="0.9">
+                                  Canvas.Left="490" Canvas.Top="155" Opacity="0.9"
+                                  Classes.registered="{Binding RegisteredFingerprints, Converter={StaticResource CollectionContains}, ConverterParameter=9}">
                         <ToolTip.Tip>
                             <TextBlock Text="Right Little Finger (9)" FontWeight="Bold"/>
                         </ToolTip.Tip>
@@ -210,6 +234,24 @@
             
             <TextBlock Text="{Binding IsFingerprintRegistered, Converter={StaticResource BoolToStatus}}"
                      TextAlignment="Center" Margin="0,4,0,0"/>
+                     
+            <!-- Registered fingerprints summary -->
+            <ItemsControl ItemsSource="{Binding RegisteredFingerprints}" HorizontalAlignment="Center" Margin="0,8,0,0"
+                         IsVisible="{Binding IsFingerprintRegistered}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="#4CAF50" CornerRadius="4" Margin="2" Padding="6,2">
+                            <TextBlock Text="{Binding Converter={StaticResource FingerNumberToNameConverter}}" 
+                                     Foreground="White" FontSize="12"/>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,20,0,0">

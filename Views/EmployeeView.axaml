@@ -24,6 +24,7 @@
             <TextBlock Text="Employees" Classes="header" />
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button Content="Add" Command="{Binding AddCommand}" Classes="success" Width="80" />
+                <Button Content="Delete All" Command="{Binding DeleteAllCommand}" Classes="danger" Width="80" />
                 <Button Content="Sync from Device" Command="{Binding SyncFromDeviceCommand}" Classes="accent" Width="140" />
                 <Button Content="Reload" Command="{Binding LoadEmployeesCommand}" Width="80" />
             </StackPanel>
@@ -70,8 +71,12 @@
                                                        VerticalAlignment="Center" Margin="8,0" FontSize="14" />
                                             <TextBlock Grid.Column="2" Text="{Binding Department.Name}" Foreground="Black" 
                                                        VerticalAlignment="Center" Margin="8,0" FontSize="14" />
-                                            <TextBlock Grid.Column="3" Text="{Binding Position}" Foreground="Black" 
-                                                       VerticalAlignment="Center" Margin="8,0" FontSize="14" />
+                                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
+                                                <TextBlock Text="{Binding Position}" Foreground="Black" FontSize="14" />
+                                                <!-- <TextBlock Text=" (" Foreground="DarkBlue" FontSize="12" FontStyle="Italic" />
+                                                <TextBlock Text="{Binding PrivilegeDescription}" Foreground="DarkBlue" FontSize="12" FontStyle="Italic" />
+                                                <TextBlock Text=")" Foreground="DarkBlue" FontSize="12" FontStyle="Italic" /> -->
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                     <Button Grid.Column="4" Content="Add Fingerprint" Width="120" Height="32" Margin="4,0" Command="{Binding DataContext.AddFingerprintCommand, ElementName=root}" CommandParameter="{Binding}" Classes="primary" HorizontalContentAlignment="Center" />

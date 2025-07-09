@@ -1,7 +1,10 @@
 using System;
+using System.Collections;
 using System.Globalization;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace AttandenceDesktop.Converters
 {
@@ -98,6 +101,40 @@ namespace AttandenceDesktop.Converters
             return new SolidColorBrush(Colors.Gray);
         }
         
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>
+    /// Converter that checks if a collection contains a specific item
+    /// </summary>
+    public class CollectionContainsConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null || parameter == null)
+                return false;
+                
+            if (value is IEnumerable<int> collection && parameter is int item)
+            {
+                return collection.Contains(item);
+            }
+            
+            if (value is IEnumerable<string> stringCollection && parameter is string stringItem)
+            {
+                return stringCollection.Contains(stringItem);
+            }
+            
+            if (value is IList list)
+            {
+                return list.Contains(parameter);
+            }
+            
+            return false;
+        }
+
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             throw new NotImplementedException();

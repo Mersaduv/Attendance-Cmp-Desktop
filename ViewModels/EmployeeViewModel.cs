@@ -42,6 +42,7 @@ namespace AttandenceDesktop.ViewModels
         public IRelayCommand AddCommand { get; }
         public IRelayCommand EditCommand { get; }
         public IRelayCommand DeleteCommand { get; }
+        public IRelayCommand DeleteAllCommand { get; }
         
         public EmployeeViewModel(
             EmployeeService employeeService, 
@@ -71,6 +72,7 @@ namespace AttandenceDesktop.ViewModels
             AddCommand = new AsyncRelayCommand(AddEmployeeAsync);
             EditCommand = new AsyncRelayCommand<Employee>(EditEmployeeAsync);
             DeleteCommand = new AsyncRelayCommand<Employee>(DeleteEmployeeAsync);
+            DeleteAllCommand = new AsyncRelayCommand(DeleteAllEmployeesAsync);
             
             // Subscribe to data change events
             _dataRefreshService.EmployeesChanged += OnEmployeesChanged;
@@ -230,8 +232,8 @@ namespace AttandenceDesktop.ViewModels
                 if (result)
                 {
                     var employee = dlgVm.ToEmployee();
-                    await _employeeService.CreateAsync(employee);
-                    await LoadEmployeesAsync();
+                await _employeeService.CreateAsync(employee);
+                await LoadEmployeesAsync();
                 }
             }
             catch (Exception ex)
@@ -276,7 +278,7 @@ namespace AttandenceDesktop.ViewModels
                     }
                     
                     await _employeeService.UpdateAsync(updatedEmployee);
-                    await LoadEmployeesAsync();
+                await LoadEmployeesAsync();
                 }
             }
             catch (Exception ex)
@@ -292,80 +294,74 @@ namespace AttandenceDesktop.ViewModels
             
             try
             {
-                var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
-                    ? desktop.MainWindow : null;
+                // Ask for confirmation
+                var result = await ShowConfirmationDialogAsync($"Delete {employee.FullName}?", 
+                    $"Are you sure you want to delete {employee.FullName}? This action cannot be undone.");
                 
-                var confirmDialog = new Window
-                {
-                    Title = "Confirm Delete",
-                    Width = 400,
-                    Height = 200,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    CanResize = false
-                };
+                if (!result) return;
                 
-                var result = false;
+                // Delete the employee
+                await _employeeService.DeleteAsync(employee.Id);
                 
-                var panel = new StackPanel
-                {
-                    Margin = new Thickness(20)
-                };
-                
-                panel.Children.Add(new TextBlock
-                {
-                    Text = $"Are you sure you want to delete {employee.FirstName} {employee.LastName}?",
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 20)
-                });
-                
-                var buttonPanel = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    HorizontalAlignment = HorizontalAlignment.Right,
-                    Spacing = 10
-                };
-                
-                var yesButton = new Button
-                {
-                    Content = "Delete",
-                    Width = 80
-                };
-                
-                var noButton = new Button
-                {
-                    Content = "Cancel",
-                    Width = 80
-                };
-                
-                yesButton.Click += (s, e) => 
-                {
-                    result = true;
-                    confirmDialog.Close();
-                };
-                
-                noButton.Click += (s, e) => 
-                {
-                    result = false;
-                    confirmDialog.Close();
-                };
-                
-                buttonPanel.Children.Add(noButton);
-                buttonPanel.Children.Add(yesButton);
-                panel.Children.Add(buttonPanel);
-                confirmDialog.Content = panel;
-                
-                await confirmDialog.ShowDialog(mainWindow);
-                
-                if (result)
-                {
-                    await _employeeService.DeleteAsync(employee.Id);
-                    await LoadEmployeesAsync();
-                }
+                // Reload the list
+                await LoadEmployeesAsync();
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error deleting employee: {ex.Message}");
                 ErrorMessage = $"Failed to delete employee: {ex.Message}";
+            }
+        }
+        
+        private async Task DeleteAllEmployeesAsync()
+        {
+            if (Employees.Count == 0) 
+            {
+                await ShowMessageAsync("No Employees", "There are no employees to delete.");
+                return;
+            }
+            
+            try
+            {
+                // Ask for confirmation with extra warning
+                var result = await ShowConfirmationDialogAsync("Delete ALL Employees?", 
+                    $"Are you sure you want to delete ALL {Employees.Count} employees? This action CANNOT be undone and will remove all employee data from the system.");
+                
+                if (!result) return;
+                
+                // Double-check with another confirmation
+                result = await ShowConfirmationDialogAsync("FINAL WARNING", 
+                    "This will permanently delete ALL employee records. Are you absolutely sure?");
+                
+                if (!result) return;
+                
+                // Show loading indicator
+                IsLoading = true;
+                ErrorMessage = string.Empty;
+                
+                // Delete all employees one by one
+                foreach (var employee in Employees.ToList())
+                {
+                    await _employeeService.DeleteAsync(employee.Id);
+                }
+                
+                // Reload the list
+                await LoadEmployeesAsync();
+                
+                // Show success message
+                await ShowMessageAsync("Success", "All employees have been deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error deleting all employees: {ex.Message}");
+                ErrorMessage = $"Failed to delete all employees: {ex.Message}";
+                
+                // Reload to see what's left
+                await LoadEmployeesAsync();
+            }
+            finally
+            {
+                IsLoading = false;
             }
         }
         
@@ -390,6 +386,32 @@ namespace AttandenceDesktop.ViewModels
                 var result = await dlg.ShowDialog<bool>(mainWindow);
                 if (result)
                 {
+                    // Get all registered templates from the dialog
+                    var registeredTemplates = dlg.RegisteredTemplates;
+                    
+                    if (registeredTemplates != null && registeredTemplates.Count > 0)
+                    {
+                        // Update the employee with the registered templates
+                        Program.LogMessage($"Updating employee {emp.Id} ({emp.FullName}) with {registeredTemplates.Count} fingerprint templates");
+                        
+                        // Default templates for Employee model (only supports 2 templates)
+                        if (registeredTemplates.TryGetValue(4, out byte[]? leftThumb))
+                        {
+                            emp.FingerprintTemplate1 = leftThumb;
+                            Program.LogMessage($"Set Left Thumb (4) template: {leftThumb.Length} bytes");
+                        }
+                        
+                        if (registeredTemplates.TryGetValue(5, out byte[]? rightThumb))
+                        {
+                            emp.FingerprintTemplate2 = rightThumb;
+                            Program.LogMessage($"Set Right Thumb (5) template: {rightThumb.Length} bytes");
+                        }
+                        
+                        // Save the employee to the database
+                        await _employeeService.UpdateAsync(emp);
+                        Program.LogMessage($"Successfully saved fingerprint templates for employee {emp.Id} ({emp.FullName})");
+                    }
+                    
                     await LoadEmployeesAsync();
                 }
             }
@@ -582,6 +604,74 @@ namespace AttandenceDesktop.ViewModels
             dialog.Content = panel;
             
             await dialog.ShowDialog(mainWindow);
+        }
+
+        private async Task<bool> ShowConfirmationDialogAsync(string title, string message)
+        {
+            var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
+                ? desktop.MainWindow : null;
+
+            var dialog = new Window
+            {
+                Title = title,
+                Width = 400,
+                Height = 200,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                CanResize = false
+            };
+
+            var panel = new StackPanel
+            {
+                Margin = new Thickness(20)
+            };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 20)
+            });
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Spacing = 10
+            };
+
+            var yesButton = new Button
+            {
+                Content = "Yes",
+                Width = 80
+            };
+
+            var noButton = new Button
+            {
+                Content = "No",
+                Width = 80
+            };
+
+            var result = false;
+            
+            yesButton.Click += (s, e) =>
+            {
+                result = true;
+                dialog.Close();
+            };
+
+            noButton.Click += (s, e) =>
+            {
+                result = false;
+                dialog.Close();
+            };
+
+            buttonPanel.Children.Add(noButton);
+            buttonPanel.Children.Add(yesButton);
+            panel.Children.Add(buttonPanel);
+            dialog.Content = panel;
+
+            await dialog.ShowDialog(mainWindow);
+            return result;
         }
     }
 } 

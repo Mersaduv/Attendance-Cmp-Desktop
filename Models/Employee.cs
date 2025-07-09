@@ -45,6 +45,13 @@ namespace AttandenceDesktop.Models
         // Keeping as BLOBs (byte[]) to remain database-agnostic. Can be null when templates فقط روی دستگاه نگه داشته می‌شوند.
         public byte[]? FingerprintTemplate1 { get; set; }
         public byte[]? FingerprintTemplate2 { get; set; }
+        
+        // User privilege level from the device (0=User, 1=Admin, 2=Manager, 3=SuperAdmin)
+        public int Privilege { get; set; } = 0;
+        
+        // Text description of the privilege level
+        [StringLength(50)]
+        public string? PrivilegeDescription { get; set; }
         // END ADD
         
         [Required(ErrorMessage = "Position is required"), StringLength(100)]

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 using System.Threading.Tasks;
+using System.Collections.ObjectModel;
 
 namespace AttandenceDesktop.ViewModels;
 
@@ -29,7 +30,15 @@ public partial class FingerprintDialogViewModel : ObservableValidator
     [ObservableProperty]
     private bool _isCapturing;
 
+    // Track which fingerprints are registered
+    [ObservableProperty]
+    private ObservableCollection<int> _registeredFingerprints = new ObservableCollection<int>();
+
+    // Store all fingerprint templates
+    private Dictionary<int, byte[]> _fingerprintTemplates = new Dictionary<int, byte[]>();
+
     public byte[]? FingerprintTemplate1 { get; private set; }
+    public byte[]? FingerprintTemplate2 { get; private set; }
 
     public List<Device> AvailableDevices { get; }
 
@@ -45,7 +54,34 @@ public partial class FingerprintDialogViewModel : ObservableValidator
 
     partial void OnSelectedFingerChanged(int value)
     {
-        // nothing, hook for future
+        // Update status message when finger selection changes
+        if (RegisteredFingerprints.Contains(value))
+        {
+            StatusMessage = $"Fingerprint already registered for {GetFingerName(value)}";
+        }
+        else
+        {
+            StatusMessage = $"Ready to capture {GetFingerName(value)}";
+        }
+    }
+
+    private string GetFingerName(int fingerNumber)
+    {
+        var fingerNames = new Dictionary<int, string>
+        {
+            { 0, "Left Little Finger" },
+            { 1, "Left Ring Finger" },
+            { 2, "Left Middle Finger" },
+            { 3, "Left Index Finger" },
+            { 4, "Left Thumb" },
+            { 5, "Right Thumb" },
+            { 6, "Right Index Finger" },
+            { 7, "Right Middle Finger" },
+            { 8, "Right Ring Finger" },
+            { 9, "Right Little Finger" }
+        };
+
+        return fingerNames.TryGetValue(fingerNumber, out string? name) ? name : "Unknown Finger";
     }
 
     private void SelectFinger(string fingerStr)
@@ -76,8 +112,52 @@ public partial class FingerprintDialogViewModel : ObservableValidator
         EmployeeId = emp.Id;
         EmployeeName = emp.FullName;
         ZkUserId = string.IsNullOrWhiteSpace(emp.ZkUserId) ? emp.EmployeeNumber : emp.ZkUserId;
-        IsFingerprintRegistered = emp.FingerprintTemplate1 != null;
-        FingerprintTemplate1 = emp.FingerprintTemplate1;
+        
+        // Initialize fingerprint templates
+        _fingerprintTemplates = new Dictionary<int, byte[]>();
+        RegisteredFingerprints.Clear();
+        
+        // Check for existing templates in the employee record
+        // In the database, we store:
+        // - FingerprintTemplate1 = Left Thumb (index 4)
+        // - FingerprintTemplate2 = Right Thumb (index 5)
+        
+        if (emp.FingerprintTemplate1 != null)
+        {
+            // Left Thumb (4)
+            _fingerprintTemplates[4] = emp.FingerprintTemplate1;
+            RegisteredFingerprints.Add(4);
+            Program.LogMessage($"Found existing template for Left Thumb (4) for employee {emp.FullName}");
+        }
+        
+        if (emp.FingerprintTemplate2 != null)
+        {
+            // Right Thumb (5)
+            _fingerprintTemplates[5] = emp.FingerprintTemplate2;
+            RegisteredFingerprints.Add(5);
+            Program.LogMessage($"Found existing template for Right Thumb (5) for employee {emp.FullName}");
+        }
+        
+        IsFingerprintRegistered = RegisteredFingerprints.Count > 0;
+        
+        // Set initial status message
+        if (IsFingerprintRegistered)
+        {
+            StatusMessage = $"Employee has {RegisteredFingerprints.Count} registered fingerprint(s)";
+            
+            // Set the selected finger to one of the registered fingers if available
+            if (RegisteredFingerprints.Count > 0)
+            {
+                SelectedFinger = RegisteredFingerprints.First();
+            }
+        }
+        else
+        {
+            StatusMessage = "No fingerprints registered yet";
+            
+            // Default to thumb fingers as they're most commonly used
+            SelectedFinger = 4; // Left Thumb
+        }
     }
 
     [RelayCommand]
@@ -85,72 +165,107 @@ public partial class FingerprintDialogViewModel : ObservableValidator
     {
         if (SelectedDevice == null)
         {
-            StatusMessage = "Please select a device";
-            Program.LogMessage("Fingerprint capture failed: No device selected");
+            StatusMessage = "Please select a device first";
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(ZkUserId))
-        {
-            StatusMessage = "ZK User ID cannot be empty";
-            Program.LogMessage("Fingerprint capture failed: ZK User ID is empty");
-            return;
-        }
+        IsCapturing = true;
+        StatusMessage = "Capturing fingerprint... Place finger on sensor";
 
         try
         {
-            StatusMessage = "Connecting to device...";
-            IsCapturing = true;
-            Program.LogMessage($"Starting fingerprint capture process for employee {EmployeeId} ({EmployeeName}), finger {SelectedFinger}");
-            
-            // Create a ZK connection service and attempt to register fingerprint
-            using var zkService = new ZkemkeeperConnectionService();
-            
-            // Execute the operation on a background thread to avoid UI blocking
-            await Task.Run(() => 
+            // Create a connection service for the device
+            using var connectionService = new ZkemkeeperConnectionService();
+
+            // Attempt to register the fingerprint
+            var result = connectionService.RegisterFingerprint(SelectedDevice, ZkUserId, SelectedFinger);
+
+            if (result.Success && result.TemplateData != null)
             {
-                Program.LogMessage($"Connecting to device {SelectedDevice.Name} ({SelectedDevice.IPAddress}:{SelectedDevice.Port})");
+                // Store the template in our local dictionary
+                _fingerprintTemplates[SelectedFinger] = result.TemplateData;
                 
-                // First attempt to connect
-                if (!zkService.Connect(SelectedDevice))
+                // Add to registered fingerprints list if not already there
+                if (!RegisteredFingerprints.Contains(SelectedFinger))
                 {
-                    StatusMessage = "Error connecting to device";
-                    Program.LogMessage($"Failed to connect to device {SelectedDevice.Name}");
-                    return;
+                    RegisteredFingerprints.Add(SelectedFinger);
                 }
                 
-                Program.LogMessage("Connection successful, proceeding with fingerprint registration");
-                StatusMessage = "Place your finger on the sensor...";
+                IsFingerprintRegistered = true;
+                StatusMessage = $"Fingerprint registered successfully for {FingerNumberToName(SelectedFinger)}";
                 
-                // Register fingerprint
-                var (success, message, template) = zkService.RegisterFingerprint(SelectedDevice, ZkUserId, SelectedFinger);
-                
-                if (success && template != null)
+                // Assign to the appropriate template property based on finger index
+                if (SelectedFinger == 4) // Left Thumb
                 {
-                    FingerprintTemplate1 = template;
-                    IsFingerprintRegistered = true;
-                    StatusMessage = "Fingerprint registered successfully";
-                    Program.LogMessage($"Successfully registered fingerprint for employee {EmployeeId} ({EmployeeName}), finger {SelectedFinger}");
+                    FingerprintTemplate1 = result.TemplateData;
+                    Program.LogMessage($"Stored Left Thumb (4) template in FingerprintTemplate1");
+                }
+                else if (SelectedFinger == 5) // Right Thumb
+                {
+                    FingerprintTemplate2 = result.TemplateData;
+                    Program.LogMessage($"Stored Right Thumb (5) template in FingerprintTemplate2");
                 }
                 else
                 {
-                    StatusMessage = $"Error registering fingerprint: {message}";
-                    Program.LogMessage($"Fingerprint registration failed: {message}");
+                    // For other fingers, use the first available template slot
+                    if (FingerprintTemplate1 == null)
+                    {
+                        FingerprintTemplate1 = result.TemplateData;
+                        Program.LogMessage($"Stored {FingerNumberToName(SelectedFinger)} ({SelectedFinger}) template in FingerprintTemplate1");
+                    }
+                    else if (FingerprintTemplate2 == null)
+                    {
+                        FingerprintTemplate2 = result.TemplateData;
+                        Program.LogMessage($"Stored {FingerNumberToName(SelectedFinger)} ({SelectedFinger}) template in FingerprintTemplate2");
+                    }
+                    else
+                    {
+                        // If both slots are full, prioritize thumbs, otherwise replace the first template
+                        if (SelectedFinger < 4 || SelectedFinger > 5) // Not a thumb
+                        {
+                            FingerprintTemplate1 = result.TemplateData;
+                            Program.LogMessage($"Replaced FingerprintTemplate1 with {FingerNumberToName(SelectedFinger)} ({SelectedFinger}) template");
+                        }
+                    }
                 }
-            });
+            }
+            else
+            {
+                StatusMessage = $"Failed to register fingerprint: {result.Message}";
+            }
         }
         catch (Exception ex)
         {
             StatusMessage = $"Error: {ex.Message}";
-            Program.LogMessage($"Exception during fingerprint capture: {ex.Message}");
-            if (ex.InnerException != null)
-            {
-                Program.LogMessage($"Inner exception: {ex.InnerException.Message}");
-            }
+            Program.LogMessage($"Error in fingerprint capture: {ex.Message}");
         }
         finally
         {
             IsCapturing = false;
         }
+    }
+    
+    private string FingerNumberToName(int fingerNumber)
+    {
+        return fingerNumber switch
+        {
+            0 => "Left Little Finger",
+            1 => "Left Ring Finger",
+            2 => "Left Middle Finger",
+            3 => "Left Index Finger",
+            4 => "Left Thumb",
+            5 => "Right Thumb",
+            6 => "Right Index Finger",
+            7 => "Right Middle Finger",
+            8 => "Right Ring Finger",
+            9 => "Right Little Finger",
+            _ => $"Unknown Finger ({fingerNumber})"
+        };
+    }
+    
+    // Get all registered fingerprint templates
+    public Dictionary<int, byte[]> GetRegisteredTemplates()
+    {
+        return _fingerprintTemplates;
     }
 } 

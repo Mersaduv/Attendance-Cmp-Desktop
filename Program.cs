@@ -23,7 +23,7 @@ sealed class Program
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
     [STAThread]
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         // Setup logging
         string logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory);
@@ -183,6 +183,32 @@ sealed class Program
                     Console.WriteLine("Press any key to start the application.");
                     Console.ReadKey();
                 }
+                else if (args[0].Equals("--test-database", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("Testing database connection...");
+                    LogMessage("Running database connection test");
+                    await DbTest.TestDatabaseConnection();
+                    Console.WriteLine("Press any key to start the application.");
+                    Console.ReadKey();
+                }
+                else if (args[0].Equals("--fix-database", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("Running database fix utility...");
+                    LogMessage("Running database fix utility");
+                    await TestDb.RunTest();
+                    Console.WriteLine("Press any key to exit.");
+                    Console.ReadKey();
+                    return; // Exit after fixing the database
+                }
+                else if (args[0].Equals("--create-database", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("Creating database...");
+                    LogMessage("Creating database");
+                    await CreateDatabase.Create();
+                    Console.WriteLine("Press any key to exit.");
+                    Console.ReadKey();
+                    return; // Exit after creating the database
+                }
             }
 
             LogMessage("Ensuring database exists");
@@ -191,6 +217,11 @@ sealed class Program
             
             LogMessage("Database ready");
             // Remove database updater call
+            
+            // Update database with new columns
+            LogMessage("Updating database schema...");
+            await DatabaseUpdater.UpdateDatabaseAsync(() => new ApplicationDbContextFactory().CreateDbContext(null));
+            LogMessage("Database schema updated");
             
             LogMessage("Starting Avalonia application");
             BuildAvaloniaApp()

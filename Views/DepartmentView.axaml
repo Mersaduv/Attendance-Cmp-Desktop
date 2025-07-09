@@ -11,6 +11,8 @@
              d:DesignWidth="800" d:DesignHeight="600">
     <UserControl.Resources>
         <converters:NullToBoolConverter x:Key="NullToBool" />
+        <converters:BoolToBoolConverter x:Key="InvertBool" Invert="True" />
+        <converters:StatusColorConverter x:Key="StatusColorConverter" />
     </UserControl.Resources>
 
     <Design.DataContext>
@@ -27,9 +29,33 @@
                         IsEnabled="{Binding SelectedDepartment, Converter={StaticResource NullToBool}}" />
                 <Button Content="Delete" Click="OnDeleteClick" Classes="danger" Width="80"
                         IsEnabled="{Binding SelectedDepartment, Converter={StaticResource NullToBool}}" />
+                <Button Content="Sync" Command="{Binding SyncDepartmentsCommand}" Classes="accent" Width="80"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                        ToolTip.Tip="Sync departments from ZKTeco devices" />
                 <Button Content="Reload" Click="OnDebugLoadClick" Width="80" />
             </StackPanel>
         </DockPanel>
+        
+        <!-- Status Display -->
+        <StackPanel IsVisible="{Binding IsBusy}">
+            <ProgressBar IsIndeterminate="True" Height="4" Margin="0,4,0,8"/>
+            <TextBlock Text="{Binding StatusMessage}" 
+                       Foreground="{Binding StatusMessage, Converter={StaticResource StatusColorConverter}}"
+                       HorizontalAlignment="Center" FontStyle="Italic" Margin="0,0,0,8"/>
+        </StackPanel>
+        
+        <!-- Status Message (when not busy) -->
+        <TextBlock Text="{Binding StatusMessage}" 
+                   Foreground="{Binding StatusMessage, Converter={StaticResource StatusColorConverter}}"
+                   IsVisible="{Binding !IsBusy}" 
+                   HorizontalAlignment="Center" 
+                   Margin="0,0,0,8"/>
+        
+        <!-- Debug Info -->
+        <TextBlock Text="{Binding Departments.Count, StringFormat=Found {0} departments}" 
+                   HorizontalAlignment="Center" 
+                   Margin="0,0,0,8"
+                   FontStyle="Italic"/>
         
         <!-- Department List -->
         <Border Classes="card">

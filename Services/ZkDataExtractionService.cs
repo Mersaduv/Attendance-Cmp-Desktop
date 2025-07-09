@@ -419,6 +419,65 @@ namespace AttandenceDesktop.Services
             return result;
         }
 
+        /// <summary>
+        /// Extracts users with their department information
+        /// </summary>
+        public async Task<List<dynamic>> ExtractUsers(Device device)
+        {
+            Program.LogMessage($"Extracting users from device: {device.Name} (IP: {device.IPAddress})");
+            var result = new List<dynamic>();
+
+            try
+            {
+                // Get all users with their data
+                var usersData = await GetUsersWithFingerprintsAsync(device);
+                if (usersData == null || !usersData.Any())
+                {
+                    Program.LogMessage($"No users found on device {device.Name}");
+                    return result;
+                }
+
+                Program.LogMessage($"Found {usersData.Count} users on device {device.Name}");
+                
+                // Extract user information with departments
+                foreach (var userEntry in usersData)
+                {
+                    try
+                    {
+                        dynamic userData = userEntry.Value;
+                        string userId = userData?.id?.ToString() ?? "";
+                        string name = userData?.name?.ToString() ?? "";
+                        string department = userData?.department?.ToString() ?? "";
+                        int privilege = Convert.ToInt32(userData?.privilege ?? 0);
+                        string privilegeDescription = userData?.privilegeDescription?.ToString() ?? "user";
+                        
+                        // Create a dynamic object with user and department info
+                        result.Add(new
+                        {
+                            UserId = userId,
+                            Name = name,
+                            Department = department,
+                            Privilege = privilege,
+                            PrivilegeDescription = privilegeDescription,
+                            Templates = userData?.templates
+                        });
+                        
+                        Program.LogMessage($"Extracted user: {userId}, Name: {name}, Department: {department}, Privilege: {privilege} ({privilegeDescription})");
+                    }
+                    catch (Exception ex)
+                    {
+                        Program.LogMessage($"Error extracting user data: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.LogMessage($"Error extracting users from device {device.Name}: {ex.Message}");
+            }
+
+            return result;
+        }
+
         #region Helper Methods
 
         // Helper method for getting user information from device
@@ -622,17 +681,17 @@ namespace AttandenceDesktop.Services
         {
             return index switch
             {
-                0 => "right thumb", // Right Thumb
-                1 => "right index", // Right Index
-                2 => "right middle", // Right Middle
-                3 => "right ring", // Right Ring
-                4 => "right little", // Right Little
-                5 => "left thumb", // Left Thumb
-                6 => "left index", // Left Index
-                7 => "left middle", // Left Middle
-                8 => "left ring", // Left Ring
-                9 => "left little", // Left Little
-                _ => $"finger {index}" // Finger
+                0 => "Left Little Finger",
+                1 => "Left Ring Finger",
+                2 => "Left Middle Finger",
+                3 => "Left Index Finger",
+                4 => "Left Thumb",
+                5 => "Right Thumb",
+                6 => "Right Index Finger",
+                7 => "Right Middle Finger",
+                8 => "Right Ring Finger",
+                9 => "Right Little Finger",
+                _ => $"Unknown Finger ({index})"
             };
         }
 
@@ -641,11 +700,11 @@ namespace AttandenceDesktop.Services
         {
             return fingerIndex switch
             {
-                0 => "Thumb",
-                1 => "Index",
+                0 => "Little",
+                1 => "Ring",
                 2 => "Middle",
-                3 => "Ring",
-                4 => "Little",
+                3 => "Index",
+                4 => "Thumb",
                 5 => "Thumb",
                 6 => "Index",
                 7 => "Middle",
