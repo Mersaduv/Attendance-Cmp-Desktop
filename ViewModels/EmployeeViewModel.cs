@@ -69,8 +69,8 @@ namespace AttandenceDesktop.ViewModels
             AddFingerprintCommand = new AsyncRelayCommand<Employee>(AddFingerprintAsync);
             SyncFromDeviceCommand = new AsyncRelayCommand(SyncFromDeviceAsync);
             AddCommand = new AsyncRelayCommand(AddEmployeeAsync);
-            EditCommand = new AsyncRelayCommand(EditEmployeeAsync);
-            DeleteCommand = new AsyncRelayCommand(DeleteEmployeeAsync);
+            EditCommand = new AsyncRelayCommand<Employee>(EditEmployeeAsync);
+            DeleteCommand = new AsyncRelayCommand<Employee>(DeleteEmployeeAsync);
             
             // Subscribe to data change events
             _dataRefreshService.EmployeesChanged += OnEmployeesChanged;
@@ -98,11 +98,11 @@ namespace AttandenceDesktop.ViewModels
             _syncStatus = string.Empty;
             
             LoadEmployeesCommand = new AsyncRelayCommand(async () => { });
-            AddFingerprintCommand = new RelayCommand(() => { });
+            AddFingerprintCommand = new AsyncRelayCommand<Employee>(async (e) => { });
             SyncFromDeviceCommand = new AsyncRelayCommand(async () => { });
             AddCommand = new AsyncRelayCommand(async () => { });
-            EditCommand = new AsyncRelayCommand(async () => { });
-            DeleteCommand = new AsyncRelayCommand(async () => { });
+            EditCommand = new AsyncRelayCommand<Employee>(async (e) => { });
+            DeleteCommand = new AsyncRelayCommand<Employee>(async (e) => { });
             
             // Add some design-time data
             Employees.Add(new Employee { 
@@ -241,9 +241,9 @@ namespace AttandenceDesktop.ViewModels
             }
         }
         
-        private async Task EditEmployeeAsync()
+        private async Task EditEmployeeAsync(Employee? employee)
         {
-            if (SelectedEmployee == null) return;
+            if (employee == null) return;
             
             try
             {
@@ -251,7 +251,10 @@ namespace AttandenceDesktop.ViewModels
                 {
                     AvailableDepartments = Departments
                 };
-                dlgVm.LoadFromEmployee(SelectedEmployee);
+                dlgVm.LoadFromEmployee(employee);
+                
+                // Set the selected department based on the employee's department ID
+                dlgVm.SelectedDepartment = Departments.FirstOrDefault(d => d.Id == employee.DepartmentId);
                 
                 var dlg = new Views.EmployeeDialog { DataContext = dlgVm };
                 var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
@@ -260,8 +263,19 @@ namespace AttandenceDesktop.ViewModels
                 var result = await dlg.ShowDialog<bool>(mainWindow);
                 if (result)
                 {
-                    var employee = dlgVm.ToEmployee();
-                    await _employeeService.UpdateAsync(employee);
+                    var updatedEmployee = dlgVm.ToEmployee();
+                    
+                    // Preserve fingerprint data if it wasn't modified
+                    if (updatedEmployee.FingerprintTemplate1 == null && employee.FingerprintTemplate1 != null)
+                    {
+                        updatedEmployee.FingerprintTemplate1 = employee.FingerprintTemplate1;
+                    }
+                    if (updatedEmployee.FingerprintTemplate2 == null && employee.FingerprintTemplate2 != null)
+                    {
+                        updatedEmployee.FingerprintTemplate2 = employee.FingerprintTemplate2;
+                    }
+                    
+                    await _employeeService.UpdateAsync(updatedEmployee);
                     await LoadEmployeesAsync();
                 }
             }
@@ -272,9 +286,9 @@ namespace AttandenceDesktop.ViewModels
             }
         }
         
-        private async Task DeleteEmployeeAsync()
+        private async Task DeleteEmployeeAsync(Employee? employee)
         {
-            if (SelectedEmployee == null) return;
+            if (employee == null) return;
             
             try
             {
@@ -299,7 +313,7 @@ namespace AttandenceDesktop.ViewModels
                 
                 panel.Children.Add(new TextBlock
                 {
-                    Text = $"Are you sure you want to delete {SelectedEmployee.FirstName} {SelectedEmployee.LastName}?",
+                    Text = $"Are you sure you want to delete {employee.FirstName} {employee.LastName}?",
                     TextWrapping = TextWrapping.Wrap,
                     Margin = new Thickness(0, 0, 0, 20)
                 });
@@ -344,7 +358,7 @@ namespace AttandenceDesktop.ViewModels
                 
                 if (result)
                 {
-                    await _employeeService.DeleteAsync(SelectedEmployee.Id);
+                    await _employeeService.DeleteAsync(employee.Id);
                     await LoadEmployeesAsync();
                 }
             }

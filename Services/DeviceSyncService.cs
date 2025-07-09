@@ -94,6 +94,43 @@ namespace AttandenceDesktop.Services
                             {
                                 existingEmployee.ZkUserId = employeeId;
                             }
+                            
+                            // Update EmployeeNumber if not already set
+                            if (string.IsNullOrEmpty(existingEmployee.EmployeeNumber))
+                            {
+                                existingEmployee.EmployeeNumber = employeeId;
+                            }
+                            
+                            // Update name if needed - parse the name from device
+                            string fullName = userName;
+                            if (!string.IsNullOrWhiteSpace(fullName))
+                            {
+                                string firstName = "";
+                                string lastName = "";
+                                
+                                // First check for period separator (e.g., "Farhad.Zaka")
+                                if (fullName.Contains('.'))
+                                {
+                                    var nameParts = fullName.Split(new[] { '.' }, 2);
+                                    firstName = nameParts[0].Trim();
+                                    lastName = nameParts.Length > 1 ? nameParts[1].Trim() : "";
+                                    Program.LogMessage($"Updated name from period-separated format: '{fullName}' as First: '{firstName}', Last: '{lastName}'");
+                                }
+                                // Then check for space separator (e.g., "Nazir Ahmad Ahmadi")
+                                else
+                                {
+                                    var nameParts = fullName.Split(new[] { ' ' }, 2);
+                                    firstName = nameParts[0].Trim();
+                                    lastName = nameParts.Length > 1 ? nameParts[1].Trim() : "";
+                                    Program.LogMessage($"Updated name from space-separated format: '{fullName}' as First: '{firstName}', Last: '{lastName}'");
+                                }
+                                
+                                // Update the employee's name if we have valid values
+                                if (!string.IsNullOrWhiteSpace(firstName))
+                                    existingEmployee.FirstName = firstName;
+                                if (!string.IsNullOrWhiteSpace(lastName))
+                                    existingEmployee.LastName = lastName;
+                            }
 
                             // Update fingerprint template if available
                             if (userData.templates != null)
@@ -178,19 +215,68 @@ namespace AttandenceDesktop.Services
             {
                 // Extract name from the device
                 string fullName = userData.name?.ToString() ?? "";
-                string[] nameParts = fullName.Split(new[] { ' ' }, 2);
                 
-                string firstName = nameParts.Length > 0 ? nameParts[0] : fullName;
-                string lastName = nameParts.Length > 1 ? nameParts[1] : "";
+                // Parse name - handle both period-separated and space-separated formats
+                string firstName = "";
+                string lastName = "";
+                
+                // First check for period separator (e.g., "Farhad.Zaka")
+                if (fullName.Contains('.'))
+                {
+                    var nameParts = fullName.Split(new[] { '.' }, 2);
+                    firstName = nameParts[0].Trim();
+                    lastName = nameParts.Length > 1 ? nameParts[1].Trim() : "";
+                    Program.LogMessage($"Parsed period-separated name: '{fullName}' as First: '{firstName}', Last: '{lastName}'");
+                }
+                // Then check for space separator (e.g., "Nazir Ahmad Ahmadi")
+                else
+                {
+                    var nameParts = fullName.Split(new[] { ' ' }, 2);
+                    firstName = nameParts[0].Trim();
+                    lastName = nameParts.Length > 1 ? nameParts[1].Trim() : "";
+                    Program.LogMessage($"Parsed space-separated name: '{fullName}' as First: '{firstName}', Last: '{lastName}'");
+                }
+                
+                // If name is empty, use default values
+                if (string.IsNullOrWhiteSpace(firstName))
+                    firstName = "Unknown";
+                if (string.IsNullOrWhiteSpace(lastName))
+                    lastName = "User";
 
-                // Get default department (first one)
+                // Get department information
                 using var ctx = _contextFactory();
-                var defaultDepartment = ctx.Departments.FirstOrDefault();
+                var departments = ctx.Departments.ToList();
                 
-                if (defaultDepartment == null)
+                if (departments.Count == 0)
                 {
                     Program.LogMessage("Cannot create employee: No departments found in database");
                     return null;
+                }
+                
+                // Try to extract department information from device data
+                string departmentName = "";
+                int departmentId = departments.First().Id; // Default to first department
+                
+                try
+                {
+                    departmentName = userData.department?.ToString() ?? "";
+                    
+                    // If we have a department name from the device, try to match it with an existing department
+                    if (!string.IsNullOrWhiteSpace(departmentName))
+                    {
+                        var matchedDept = departments.FirstOrDefault(d => 
+                            d.Name.Equals(departmentName, StringComparison.OrdinalIgnoreCase));
+                            
+                        if (matchedDept != null)
+                        {
+                            departmentId = matchedDept.Id;
+                            Program.LogMessage($"Matched department '{departmentName}' to ID: {departmentId}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Program.LogMessage($"Error extracting department: {ex.Message}");
                 }
 
                 // Extract other potential fields
@@ -225,7 +311,7 @@ namespace AttandenceDesktop.Services
                     EmployeeCode = employeeCode,
                     EmployeeNumber = employeeId,
                     ZkUserId = employeeId,
-                    DepartmentId = defaultDepartment.Id,
+                    DepartmentId = departmentId,
                     HireDate = DateTime.Today
                 };
 
