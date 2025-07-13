@@ -237,38 +237,8 @@ namespace AttandenceDesktop.Services
                                     existingEmployee.PrivilegeDescription = privilegeDesc;
                                     Program.LogMessage($"Updated privilege for {existingEmployee.FullName}: {privilege} ({privilegeDesc})");
                                     
-                                    // Update department based on privilege if privilege changed and department name is empty
-                                    string departmentName = userData.department?.ToString() ?? "";
-                                    if (string.IsNullOrWhiteSpace(departmentName) && !string.IsNullOrWhiteSpace(privilegeDesc))
-                                    {
-                                        // Format the privilege description for department name (capitalize first letter)
-                                        string privilegeDeptName = char.ToUpper(privilegeDesc[0]) + privilegeDesc.Substring(1);
-                                        
-                                        using var dbContext = _contextFactory();
-                                        // Try to find existing department by privilege name
-                                        var existingDepartment = await dbContext.Departments
-                                            .FirstOrDefaultAsync(d => d.Name.ToLower() == privilegeDeptName.ToLower());
-                                        
-                                        if (existingDepartment != null)
-                                        {
-                                            existingEmployee.DepartmentId = existingDepartment.Id;
-                                            Program.LogMessage($"Updated department for {existingEmployee.FullName} to {privilegeDeptName} based on privilege");
-                                        }
-                                        else
-                                        {
-                                            // Create new department based on privilege
-                                            var newDepartment = new Department
-                                            {
-                                                Name = privilegeDeptName
-                                            };
-                                            
-                                            dbContext.Departments.Add(newDepartment);
-                                            await dbContext.SaveChangesAsync();
-                                            
-                                            existingEmployee.DepartmentId = newDepartment.Id;
-                                            Program.LogMessage($"Created new department {privilegeDeptName} and updated {existingEmployee.FullName}'s department");
-                                        }
-                                    }
+                                    // We no longer update department based on privilege
+                                    // Department and privilege are completely separate concepts
                                 }
                             }
                             catch (Exception ex)
@@ -335,6 +305,87 @@ namespace AttandenceDesktop.Services
 
             return result;
         }
+        
+        /// <summary>
+        /// Adds an employee to a device with the specified parameters
+        /// </summary>
+        /// <param name="device">The device to add the employee to</param>
+        /// <param name="employee">The employee to add</param>
+        /// <returns>A result object with success status</returns>
+        public async Task<bool> AddEmployeeToDeviceAsync(Device device, Employee employee)
+        {
+            try
+            {
+                Program.LogMessage($"Adding employee {employee.FullName} to device {device.Name}");
+                
+                // Initialize ZK service
+                var zkService = new ZkTecoConnectionService();
+                
+                // Connect to device
+                bool connected = zkService.Connect(device);
+                if (!connected)
+                {
+                    Program.LogMessage($"Failed to connect to device {device.Name}");
+                    return false;
+                }
+                
+                try
+                {
+                    // Get the user ID (either from ZkUserId or generate if not present)
+                    string userId = !string.IsNullOrEmpty(employee.ZkUserId) 
+                        ? employee.ZkUserId 
+                        : employee.EmployeeNumber;
+                    
+                    // Prepare user name
+                    string userName = $"{employee.FirstName} {employee.LastName}";
+                    
+                    // Set default password - this should be configurable in a real application
+                    string password = "12345678";
+                    
+                    // Set default privilege level (0 = normal user)
+                    int privilege = employee.Privilege;
+                    
+                    // Create/update user in the device
+                    bool success = zkService.SetUserInfo(device.MachineNumber, userId, userName, password, privilege);
+                    
+                    if (success)
+                    {
+                        // If successful, update the employee's ZkUserId if it wasn't set
+                        if (string.IsNullOrEmpty(employee.ZkUserId))
+                        {
+                            using var dbContext = _contextFactory();
+                            var dbEmployee = await dbContext.Employees.FindAsync(employee.Id);
+                            if (dbEmployee != null)
+                            {
+                                dbEmployee.ZkUserId = userId;
+                                await dbContext.SaveChangesAsync();
+                                
+                                // Update the employee object
+                                employee.ZkUserId = userId;
+                            }
+                        }
+                        
+                        Program.LogMessage($"Successfully added employee {employee.FullName} to device {device.Name}");
+                        return true;
+                    }
+                    else
+                    {
+                        Program.LogMessage($"Failed to add employee {employee.FullName} to device {device.Name}");
+                        return false;
+                    }
+                }
+                finally
+                {
+                    // Always dispose to clean up resources and close connection
+                    zkService.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.LogMessage($"Error adding employee to device: {ex.Message}");
+                return false;
+            }
+        }
 
         /// <summary>
         /// Extracts departments from the device and updates the database
@@ -370,15 +421,12 @@ namespace AttandenceDesktop.Services
                         Program.LogMessage($"Mapped department code {deptCode} to name: {department} for user {user?.Name}");
                     }
                     
-                    // If department is still empty, try to determine from privilege level
+                    // If department is still empty, no longer use privilege level
+                    // Instead, use a default department
                     if (string.IsNullOrWhiteSpace(department))
                     {
-                        int privilege = Convert.ToInt32(user?.Privilege ?? 0);
-                        string privilegeDesc = user?.PrivilegeDescription?.ToString() ?? "";
-                        
-                        // Map privilege to department name
-                        department = MapPrivilegeToDepartment(privilege, privilegeDesc);
-                        Program.LogMessage($"Mapped privilege {privilege} ({privilegeDesc}) to department: {department} for user {user?.Name}");
+                        department = "General";
+                        Program.LogMessage($"Using default department: {department} for user {user?.Name}");
                     }
                     
                     if (!string.IsNullOrWhiteSpace(department))
@@ -456,22 +504,9 @@ namespace AttandenceDesktop.Services
         /// </summary>
         private string MapPrivilegeToDepartment(int privilege, string privilegeDescription)
         {
-            // First try to use the actual privilegeDescription from the device
-            if (!string.IsNullOrWhiteSpace(privilegeDescription))
-            {
-                // Convert first letter to uppercase for consistency
-                return char.ToUpper(privilegeDescription[0]) + privilegeDescription.Substring(1);
-            }
-            
-            // If privilegeDescription is empty, fall back to numeric privilege level
-            return privilege switch
-            {
-                0 => "User",     // Regular user
-                1 => "Admin",    // Admin
-                2 => "Manager",  // Manager
-                3 => "SuperAdmin", // Super admin
-                _ => "General"   // Default
-            };
+            // No longer map privilege to department
+            // Instead, return a default department
+            return "General";
         }
 
         /// <summary>
@@ -607,12 +642,12 @@ namespace AttandenceDesktop.Services
                 {
                     departmentName = userData.department?.ToString() ?? "";
                     
-                    // If department name is empty, use privilege description as department
-                    if (string.IsNullOrWhiteSpace(departmentName) && !string.IsNullOrWhiteSpace(privilegeDescription))
+                    // We no longer use privilege for department
+                    // If department name is empty, just use default department
+                    if (string.IsNullOrWhiteSpace(departmentName))
                     {
-                        // Format the privilege description for department name (capitalize first letter)
-                        departmentName = char.ToUpper(privilegeDescription[0]) + privilegeDescription.Substring(1);
-                        Program.LogMessage($"Using privilege description as department: {departmentName}");
+                        departmentName = "General";
+                        Program.LogMessage($"Using default department: General");
                     }
                     
                     // If we have a department name, try to match it with an existing department

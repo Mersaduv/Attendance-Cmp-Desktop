@@ -49,7 +49,7 @@
                             <DataTemplate x:DataType="models:Employee">
                                 <Grid Margin="0,8" Height="40">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="60" />
+                                        <ColumnDefinition Width="100" />
                                         <ColumnDefinition Width="2*" />
                                         <ColumnDefinition Width="1.5*" />
                                         <ColumnDefinition Width="1.5*" />
@@ -60,13 +60,13 @@
                                     <Border Grid.Column="0" Grid.ColumnSpan="4" Background="#f0f0f0" CornerRadius="4" Margin="0,0,8,0">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="100" />
                                                 <ColumnDefinition Width="2*" />
                                                 <ColumnDefinition Width="1.5*" />
                                                 <ColumnDefinition Width="1.5*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="{Binding Id}" Width="40" Foreground="Black" 
-                                                       VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold" />
+                                            <TextBlock Grid.Column="0" Text="{Binding ZkUserId}" Foreground="Black" 
+                                                       VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" FontWeight="Bold" />
                                             <TextBlock Grid.Column="1" Text="{Binding FullName}" Foreground="Black" 
                                                        VerticalAlignment="Center" Margin="8,0" FontSize="14" />
                                             <TextBlock Grid.Column="2" Text="{Binding Department.Name}" Foreground="Black" 
@@ -79,7 +79,7 @@
                                             </StackPanel>
                                         </Grid>
                                     </Border>
-                                    <Button Grid.Column="4" Content="Add Fingerprint" Width="120" Height="32" Margin="4,0" Command="{Binding DataContext.AddFingerprintCommand, ElementName=root}" CommandParameter="{Binding}" Classes="primary" HorizontalContentAlignment="Center" />
+                                    <!-- <Button Grid.Column="4" Content="Add Fingerprint" Width="120" Height="32" Margin="4,0" Command="{Binding DataContext.AddFingerprintCommand, ElementName=root}" CommandParameter="{Binding}" Classes="primary" HorizontalContentAlignment="Center" /> -->
                                     <Button Grid.Column="5" Content="Edit" Width="80" Height="32" Margin="4,0" Command="{Binding DataContext.EditCommand, ElementName=root}" CommandParameter="{Binding}" 
                                             Classes="primary" HorizontalContentAlignment="Center" />
                                     <Button Grid.Column="6" Content="Delete" Width="80" Height="32" Margin="4,0" Command="{Binding DataContext.DeleteCommand, ElementName=root}" CommandParameter="{Binding}" 

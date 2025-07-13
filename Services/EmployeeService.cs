@@ -30,11 +30,15 @@ namespace AttandenceDesktop.Services
         public async Task<List<Employee>> GetAllAsync()
         {
             using var ctx = NewCtx();
-            return await ctx.Employees
+            
+            // Get all employees and order them by ID in descending order (newest first)
+            // This ensures that newly created employees appear at the top of the list
+            var allEmployees = await ctx.Employees
                 .Include(e => e.Department)
-                .OrderBy(e => e.LastName)
-                .ThenBy(e => e.FirstName)
+                .OrderByDescending(e => e.Id)
                 .ToListAsync();
+            
+            return allEmployees;
         }
         
         public async Task<Employee> GetByIdAsync(int id)
@@ -170,6 +174,55 @@ namespace AttandenceDesktop.Services
                 emp.FingerprintTemplate1 = template;
             await ctx.SaveChangesAsync();
             _dataRefreshService.NotifyEmployeesChanged();
+        }
+        
+        /// <summary>
+        /// Generates a unique employee ID in the format "HRT001" to "HRT00999999"
+        /// </summary>
+        public async Task<string> GenerateUniqueEmployeeIdAsync()
+        {
+            using var ctx = NewCtx();
+            
+            // Find all existing employee numbers that match the pattern
+            var existingIds = await ctx.Employees
+                .Where(e => e.EmployeeNumber != null && e.EmployeeNumber.StartsWith("HRT"))
+                .Select(e => e.EmployeeNumber)
+                .ToListAsync();
+            
+            int maxNumber = 0;
+            
+            foreach (var id in existingIds)
+            {
+                // Try to extract the number part from the ID
+                if (id != null && id.StartsWith("HRT"))
+                {
+                    string numPart = id.Substring(3); // Remove "HRT"
+                    if (int.TryParse(numPart, out int num))
+                    {
+                        maxNumber = Math.Max(maxNumber, num);
+                    }
+                }
+            }
+            
+            // Increment to get the next number
+            int nextNumber = maxNumber + 1;
+            
+            // Format the new ID
+            string newId;
+            if (nextNumber < 10)
+                newId = $"HRT00{nextNumber}";
+            else if (nextNumber < 100)
+                newId = $"HRT0{nextNumber}";
+            else if (nextNumber < 1000)
+                newId = $"HRT{nextNumber}";
+            else if (nextNumber < 10000)
+                newId = $"HRT{nextNumber}";
+            else if (nextNumber < 100000)
+                newId = $"HRT{nextNumber}";
+            else
+                newId = $"HRT{nextNumber}";
+            
+            return newId;
         }
     }
 } 

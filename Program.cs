@@ -621,6 +621,7 @@ sealed class Program
         services.AddSingleton<ExportService>();
         services.AddSingleton<ReportGridExportService>();
         services.AddSingleton<DeviceSyncService>();
+        services.AddSingleton<ZkJsonAttendanceService>();
         
         // View models
         services.AddTransient<MainWindowViewModel>();

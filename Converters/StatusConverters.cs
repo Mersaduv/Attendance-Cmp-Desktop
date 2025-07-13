@@ -108,6 +108,52 @@ namespace AttandenceDesktop.Converters
     }
 
     /// <summary>
+    /// Converter for attendance status that returns appropriate color and styling
+    /// </summary>
+    public class AttendanceStatusConverter : IValueConverter 
+    {
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (value is not string status)
+                return new SolidColorBrush(Colors.Black);
+            
+            // If parameter is "FontWeight", return appropriate font weight
+            if (parameter is string param && param == "FontWeight")
+            {
+                return status switch
+                {
+                    "Absent" => FontWeight.Bold,
+                    "Leave" => FontWeight.SemiBold,
+                    _ => FontWeight.Normal
+                };
+            }
+            
+            // Default behavior: return appropriate color brush
+            return status switch
+            {
+                "Absent" => new SolidColorBrush(Color.Parse("#D32F2F")), // Red
+                "Leave" => new SolidColorBrush(Color.Parse("#FFA000")),  // Orange/Amber
+                "Late Arrival" => new SolidColorBrush(Color.Parse("#D81B60")), // Pink
+                "Early Departure" => new SolidColorBrush(Color.Parse("#FF9800")), // Orange
+                "Late & Left Early" => new SolidColorBrush(Color.Parse("#D32F2F")), // Red
+                "Overtime" => new SolidColorBrush(Color.Parse("#2E7D32")), // Green
+                "Early Arrival" => new SolidColorBrush(Color.Parse("#1976D2")), // Blue
+                "Half Day" => new SolidColorBrush(Color.Parse("#827717")), // Olive/Yellow
+                "Present" => new SolidColorBrush(Color.Parse("#000000")), // Black
+                "Holiday" => new SolidColorBrush(Color.Parse("#7B1FA2")), // Purple
+                "Non-Working Day" => new SolidColorBrush(Color.Parse("#5D4037")), // Brown
+                "Scheduled" => new SolidColorBrush(Color.Parse("#607D8B")), // Blue Grey
+                _ => new SolidColorBrush(Colors.Black)
+            };
+        }
+
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>
     /// Converter that checks if a collection contains a specific item
     /// </summary>
     public class CollectionContainsConverter : IValueConverter

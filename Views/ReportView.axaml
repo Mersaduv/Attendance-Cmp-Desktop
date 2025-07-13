@@ -1,28 +1,57 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl x:Name="root" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AttandenceDesktop.ViewModels"
              xmlns:converters="using:AttandenceDesktop.Converters"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             xmlns:models="using:AttandenceDesktop.Models"
+             mc:Ignorable="d"
              x:Class="AttandenceDesktop.Views.ReportView"
-             x:DataType="vm:ReportViewModel">
+             x:DataType="vm:ReportViewModel"> 
 
-    <Grid RowDefinitions="Auto,*">
+    <Design.DataContext>
+        <vm:ReportViewModel/>
+    </Design.DataContext>
+
+    <UserControl.Resources>
+        <converters:NullToBoolConverter x:Key="NullToBool"/>
+        <converters:StatusColorConverter x:Key="StatusColorConverter"/>
+        <converters:BoolToBoolConverter x:Key="BoolToBoolConverter"/>
+        <converters:BoolToBoolConverter x:Key="InvertBoolConverter" Invert="True"/>
+        <converters:StringEqualsConverter x:Key="StringEqualsConverter"/>
+        <converters:AttendanceStatusConverter x:Key="AttendanceStatusConverter"/>
+    </UserControl.Resources>
+
+    <StackPanel Margin="16" Spacing="12">
+        <!-- Header and Action Buttons -->
+        <DockPanel>
+            <TextBlock Text="Report" Classes="header" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Content="Add" Command="{Binding AddCommand}" Classes="success" Width="80" />
+                <Button Content="Delete All" Command="{Binding DeleteAllCommand}" Classes="danger" Width="80" />
+                <Button Content="Sync from Device" Command="{Binding SyncFromDeviceCommand}" Classes="accent" Width="140" />
+                <Button Content="Sync Attendance Data" Command="{Binding SyncAttendanceCommand}" Width="160" Background="#8E24AA" Foreground="White" />
+                <Button Content="Clear Attendance Data" Command="{Binding ClearAttendanceDataCommand}" Width="180" Background="#D32F2F" Foreground="White" />
+                <Button Content="Reload" Command="{Binding LoadEmployeesCommand}" Width="80" />
+            </StackPanel>
+        </DockPanel>
+        
         <!-- Report Controls -->
         <Border Grid.Row="0" Background="White" Padding="10" Margin="0,0,0,10" CornerRadius="5" BoxShadow="0 2 4 #20000000">
-            <Grid ColumnDefinitions="*,*,*,*,Auto">
-                <!-- Report Type Selection -->
-                <StackPanel Grid.Column="0" Margin="5">
-                    <TextBlock Text="Report Type" Margin="0,0,0,5" />
-                    <ComboBox SelectedIndex="{Binding ReportTypeIndex}" 
-                              Width="150" 
-                              HorizontalAlignment="Stretch">
-                        <ComboBoxItem>Employee</ComboBoxItem>
-                        <ComboBoxItem>Department</ComboBoxItem>
-                        <ComboBoxItem>Company</ComboBoxItem>
-                    </ComboBox>
-                </StackPanel>
+            <Grid RowDefinitions="Auto,Auto" Margin="0,0,0,10">
+                
+                <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,Auto">
+                    <!-- Report Type Selection -->
+                    <StackPanel Grid.Column="0" Margin="5">
+                        <TextBlock Text="Report Type" Margin="0,0,0,5" />
+                        <ComboBox SelectedIndex="{Binding ReportTypeIndex}" 
+                                  Width="150" 
+                                  HorizontalAlignment="Stretch">
+                            <ComboBoxItem>Employee</ComboBoxItem>
+                            <ComboBoxItem>Department</ComboBoxItem>
+                            <ComboBoxItem>Company</ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
                 
                 <!-- Employee Selection - Visible only when Report Type is Employee -->
                 <StackPanel Grid.Column="1" Margin="5" IsVisible="{Binding IsEmployeeSelectionVisible}">
@@ -67,32 +96,41 @@
                             Foreground="White"
                             Padding="10,5" />
                 </StackPanel>
+                </Grid>
             </Grid>
         </Border>
         
-        <!-- Report Content -->
-        <Grid Grid.Row="1" RowDefinitions="*,Auto,Auto">
-            <!-- Report Data Grid - Shows when not on summary page -->
-            <Border Grid.Row="0" 
+        <!-- Sync Status (Visible when syncing) -->
+        <Border Classes="card" IsVisible="{Binding IsSyncing}">
+            <StackPanel Spacing="8" Margin="8">
+                <TextBlock Text="Device Synchronization" FontWeight="Bold" />
+                <ProgressBar IsIndeterminate="True" Height="4" Margin="0,4,0,8"/>
+                <TextBlock Text="{Binding SyncStatus}" FontStyle="Italic" />
+            </StackPanel>
+        </Border>
+        
+        <!-- Report Content Grid (DataGrid + Summary + Paging) -->
+        <Grid RowDefinitions="*,Auto,Auto" IsVisible="{Binding IsAttendanceReportVisible}">
+            <!-- DataGrid Border -->
+            <Border Grid.Row="0"
                     Background="White"
                     BorderThickness="1"
                     BorderBrush="#DDDDDD"
                     CornerRadius="5"
                     BoxShadow="0 2 4 #20000000"
-                    IsVisible="{Binding !IsLastPage}">
+                    IsVisible="{Binding IsLastPage, Converter={StaticResource InvertBoolConverter}}">
                 <Grid Margin="5">
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                        <DataGrid ItemsSource="{Binding ReportItems}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="True"
-                                  Background="Transparent"
-                                  BorderThickness="0"
-                                  GridLinesVisibility="All"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  VerticalScrollBarVisibility="Auto"
-                                  RowBackground="White"
-                                  MinHeight="300"
-                                  HorizontalAlignment="Stretch">
+                    <DataGrid ItemsSource="{Binding ReportItems}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              GridLinesVisibility="All"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              RowBackground="White"
+                              MinHeight="300"
+                              HorizontalAlignment="Stretch">
                             <DataGrid.Styles>
                                 <Style Selector="DataGridColumnHeader">
                                     <Setter Property="Background" Value="#E3F2FD" />
@@ -118,15 +156,10 @@
                                 </Style>
                             </DataGrid.Styles>
                             <DataGrid.Columns>
-                                <!-- Date column with improved formatting -->
                                 <DataGridTemplateColumn Header="Date" Width="130">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}" 
-                                                       Margin="5,0"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       FontWeight="Medium" />
+                                            <TextBlock Text="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}" Margin="5,0" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Medium" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
@@ -134,375 +167,124 @@
                                 <DataGridTemplateColumn Header="Department" Width="140">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding DepartmentName}" 
-                                                       Foreground="#1976D2" 
-                                                       FontWeight="SemiBold"
-                                                       Margin="5,0"
-                                                       TextWrapping="Wrap"
-                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding DepartmentName}" Foreground="#1976D2" FontWeight="SemiBold" Margin="5,0" TextWrapping="Wrap" VerticalAlignment="Center" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="Check In" Binding="{Binding CheckInTime, StringFormat={}{0:HH:mm:ss}}" Width="110" />
                                 <DataGridTextColumn Header="Check Out" Binding="{Binding CheckOutTime, StringFormat={}{0:HH:mm:ss}}" Width="110" />
                                 <DataGridTextColumn Header="Duration" Binding="{Binding WorkDuration, StringFormat={}{0:hh\\:mm\\:ss}}" Width="110" />
-                                
-                                <!-- Status column with conditional formatting -->
                                 <DataGridTemplateColumn Header="Status" Width="130">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Status}" 
-                                                       Foreground="{Binding Status, Converter={StaticResource StringEqualsConverter}, ConverterParameter='Late Arrival', FallbackValue=Black}"
-                                                       TextWrapping="Wrap"
-                                                       FontWeight="Normal"
-                                                       Margin="5,0"
-                                                       VerticalAlignment="Center" />
+                                                      TextWrapping="Wrap" 
+                                                      Margin="5,0" 
+                                                      VerticalAlignment="Center"
+                                                      Foreground="{Binding Status, Converter={StaticResource AttendanceStatusConverter}}"
+                                                      FontWeight="{Binding Status, Converter={StaticResource AttendanceStatusConverter}, ConverterParameter=FontWeight}" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                
-                                <!-- Late column with icon -->
                                 <DataGridTemplateColumn Header="Late" Width="80">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                                                <TextBlock Text="{Binding LateMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" 
-                                                           Foreground="#D32F2F"
-                                                           FontWeight="Bold"
-                                                           FontSize="14" />
+                                                <TextBlock Text="{Binding LateMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" Foreground="#D32F2F" FontWeight="Bold" FontSize="14" />
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                
-                                <!-- Early Arrival column -->
                                 <DataGridTemplateColumn Header="Early Arrival" Width="90">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                                                <TextBlock Text="{Binding EarlyArrivalMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" 
-                                                           Foreground="#2196F3"
-                                                           FontWeight="Bold"
-                                                           FontSize="14" />
+                                                <TextBlock Text="{Binding EarlyArrivalMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" Foreground="#2196F3" FontWeight="Bold" FontSize="14" />
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                
-                                <!-- Left Early column with icon -->
                                 <DataGridTemplateColumn Header="Left Early" Width="90">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                                                <TextBlock Text="{Binding EarlyDepartureMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" 
-                                                           Foreground="#FF9800"
-                                                           FontWeight="Bold"
-                                                           FontSize="14" />
+                                                <TextBlock Text="{Binding EarlyDepartureMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" Foreground="#FF9800" FontWeight="Bold" FontSize="14" />
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                
-                                <!-- Overtime column with icon -->
                                 <DataGridTemplateColumn Header="Overtime" Width="90">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                                                <TextBlock Text="{Binding OvertimeMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" 
-                                                           Foreground="#4CAF50"
-                                                           FontWeight="Bold"
-                                                           FontSize="14" />
+                                                <TextBlock Text="{Binding OvertimeMinutes, StringFormat={}{0:hh\\:mm}, TargetNullValue='-'}" Foreground="#4CAF50" FontWeight="Bold" FontSize="14" />
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
-                    </ScrollViewer>
-                </Grid>
-            </Border>
-            
-            <!-- Summary Page - Shows on last page only -->
-            <Border Grid.Row="0" 
-                   Background="White"
-                   BorderThickness="1"
-                   BorderBrush="#DDDDDD"
-                   CornerRadius="5"
-                   BoxShadow="0 2 4 #20000000"
-                   IsVisible="{Binding IsLastPage}"
-                   Padding="20">
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                    <Grid RowDefinitions="Auto,*">
-                        <!-- Summary Title -->
-                        <Border Grid.Row="0" 
-                                Background="#1976D2"
-                                CornerRadius="5"
-                                Padding="15"
-                                Margin="0,0,0,20">
-                            <TextBlock Text="Attendance Summary" 
-                                      FontSize="24" 
-                                      FontWeight="Bold" 
-                                      HorizontalAlignment="Center"
-                                      Foreground="White"/>
-                        </Border>
-                        
-                        <!-- Summary Content using responsive layout -->
-                        <Grid Grid.Row="1" 
-                              ColumnDefinitions="*,*" 
-                              RowDefinitions="Auto,Auto"
-                              Margin="0,10">
-                            
-                            <!-- Card 1: Absent Days -->
-                            <Border Grid.Row="0" 
-                                   Grid.Column="0"
-                                   Background="White" 
-                                   CornerRadius="8" 
-                                   BoxShadow="0 2 10 #20000000"
-                                   Margin="10,10,20,20"
-                                   Padding="0"
-                                   MinHeight="150">
-                                <Grid RowDefinitions="Auto,*">
-                                    <Border Grid.Row="0" 
-                                           Background="#D32F2F" 
-                                           CornerRadius="8,8,0,0" 
-                                           Padding="15,10">
-                                        <TextBlock Text="Absent Days" 
-                                                 FontWeight="Bold" 
-                                                 FontSize="18" 
-                                                 Foreground="White"/>
-                                    </Border>
-                                    <StackPanel Grid.Row="1" 
-                                              HorizontalAlignment="Center" 
-                                              VerticalAlignment="Center"
-                                              Margin="0,20">
-                                        <TextBlock Text="{Binding AbsentDays}" 
-                                                 FontSize="40" 
-                                                 FontWeight="Bold"
-                                                 HorizontalAlignment="Center"
-                                                 Foreground="#D32F2F"/>
-                                        <TextBlock Text="Days" 
-                                                 FontSize="16"
-                                                 HorizontalAlignment="Center"
-                                                 Margin="0,5,0,0"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                            
-                            <!-- Card 2: Time Stats -->
-                            <Border Grid.Row="0" 
-                                   Grid.Column="1"
-                                   Grid.RowSpan="2"
-                                   Background="White" 
-                                   CornerRadius="8" 
-                                   BoxShadow="0 2 10 #20000000"
-                                   Margin="5,10,10,10"
-                                   Padding="0"
-                                   MinHeight="320">
-                                <Grid RowDefinitions="Auto,*">
-                                    <Border Grid.Row="0" 
-                                           Background="#1976D2" 
-                                           CornerRadius="8,8,0,0" 
-                                           Padding="15,10">
-                                        <TextBlock Text="Time Summary (Hours:Minutes)" 
-                                                 FontWeight="Bold" 
-                                                 FontSize="18" 
-                                                 Foreground="White"/>
-                                    </Border>
-                                    <Grid Grid.Row="1" 
-                                         RowDefinitions="*,*,*" 
-                                         Margin="15">
-                                        
-                                        <!-- Late Time Total -->
-                                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,15,0,15">
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Total Late Arrival Time:" 
-                                                         FontWeight="SemiBold" 
-                                                         FontSize="16"/>
-                                                <TextBlock Text="Time arriving late to work" 
-                                                         Opacity="0.7"
-                                                         FontSize="12"
-                                                         Margin="0,3,0,0"/>
-                                            </StackPanel>
-                                            <Border Grid.Column="1"
-                                                   Background="#FFEBEE" 
-                                                   CornerRadius="20" 
-                                                   Width="120"
-                                                   Height="40"
-                                                   HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding TotalLateTime}" 
-                                                         FontWeight="Bold" 
-                                                         Foreground="#D32F2F"
-                                                         FontSize="18"
-                                                         HorizontalAlignment="Center"
-                                                         VerticalAlignment="Center"/>
-                                            </Border>
-                                        </Grid>
-                                        
-                                        <!-- Early Departure Time Total -->
-                                        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,15,0,15">
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Total Early Departure Time:" 
-                                                         FontWeight="SemiBold"
-                                                         FontSize="16"/>
-                                                <TextBlock Text="Time leaving early from work" 
-                                                         Opacity="0.7"
-                                                         FontSize="12"
-                                                         Margin="0,3,0,0"/>
-                                            </StackPanel>
-                                            <Border Grid.Column="1"
-                                                   Background="#FFF8E1" 
-                                                   CornerRadius="20" 
-                                                   Width="120"
-                                                   Height="40"
-                                                   HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding TotalEarlyDepartureTime}" 
-                                                         FontWeight="Bold" 
-                                                         Foreground="#FF9800"
-                                                         FontSize="18"
-                                                         HorizontalAlignment="Center"
-                                                         VerticalAlignment="Center"/>
-                                            </Border>
-                                        </Grid>
-                                        
-                                        <!-- Overtime Time Total -->
-                                        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,15,0,15">
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Total Overtime:" 
-                                                         FontWeight="SemiBold"
-                                                         FontSize="16"/>
-                                                <TextBlock Text="Extra time worked beyond schedule" 
-                                                         Opacity="0.7"
-                                                         FontSize="12"
-                                                         Margin="0,3,0,0"/>
-                                            </StackPanel>
-                                            <Border Grid.Column="1"
-                                                   Background="#E8F5E9" 
-                                                   CornerRadius="20" 
-                                                   Width="120"
-                                                   Height="40"
-                                                   HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding TotalOvertimeTime}" 
-                                                         FontWeight="Bold" 
-                                                         Foreground="#4CAF50"
-                                                         FontSize="18"
-                                                         HorizontalAlignment="Center"
-                                                         VerticalAlignment="Center"/>
-                                            </Border>
-                                        </Grid>
-                                    </Grid>
-                                </Grid>
-                            </Border>
-                            
-                            <!-- Card 3: Additional Stats -->
-                            <Border Grid.Row="1" 
-                                   Grid.Column="0"
-                                   Background="White" 
-                                   CornerRadius="8" 
-                                   BoxShadow="0 2 10 #20000000"
-                                   Margin="10,0,20,10"
-                                   Padding="0"
-                                   MinHeight="150">
-                                <Grid RowDefinitions="Auto,*">
-                                    <Border Grid.Row="0" 
-                                           Background="#2196F3" 
-                                           CornerRadius="8,8,0,0" 
-                                           Padding="15,10">
-                                        <TextBlock Text="General Statistics" 
-                                                 FontWeight="Bold" 
-                                                 FontSize="18" 
-                                                 Foreground="White"/>
-                                    </Border>
-                                    <StackPanel Grid.Row="1" Margin="15,15">
-                                        <Grid ColumnDefinitions="*,Auto" Margin="0,8">
-                                            <TextBlock Grid.Column="0" Text="Present Days:" FontWeight="Medium"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Statistics.PresentDays}" 
-                                                     FontWeight="SemiBold" 
-                                                     Foreground="#2196F3"
-                                                     HorizontalAlignment="Right"/>
-                                        </Grid>
-                                        <Grid ColumnDefinitions="*,Auto" Margin="0,8">
-                                            <TextBlock Grid.Column="0" Text="Late Arrival Days:" FontWeight="Medium"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Statistics.LateArrivals}" 
-                                                     FontWeight="SemiBold" 
-                                                     Foreground="#D32F2F"
-                                                     HorizontalAlignment="Right"/>
-                                        </Grid>
-                                        <Grid ColumnDefinitions="*,Auto" Margin="0,8">
-                                            <TextBlock Grid.Column="0" Text="Early Departure Days:" FontWeight="Medium"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Statistics.EarlyDepartures}" 
-                                                     FontWeight="SemiBold" 
-                                                     Foreground="#FF9800"
-                                                     HorizontalAlignment="Right"/>
-                                        </Grid>
-                                        <Grid ColumnDefinitions="*,Auto" Margin="0,8">
-                                            <TextBlock Grid.Column="0" Text="Overtime Days:" FontWeight="Medium"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Statistics.OvertimeDays}" 
-                                                     FontWeight="SemiBold" 
-                                                     Foreground="#4CAF50"
-                                                     HorizontalAlignment="Right"/>
-                                        </Grid>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                        </Grid>
                     </Grid>
-                </ScrollViewer>
             </Border>
-            
-            <!-- Pagination controls -->
-            <StackPanel Grid.Row="1" 
-                       Orientation="Horizontal" 
-                       HorizontalAlignment="Center" 
-                       Margin="0,10">
-                <Button Command="{Binding PreviousPageCommand}" 
-                        Content="◀ Previous" 
-                        Margin="5,0"
-                        Background="#E3F2FD"
-                        Padding="15,8" />
-                <Border Background="#E3F2FD" 
-                        CornerRadius="3" 
-                        Padding="15,8" 
-                        VerticalAlignment="Center">
-                    <TextBlock Text="{Binding PageInfo}" 
-                              FontWeight="Bold" 
-                              VerticalAlignment="Center"/>
+
+            <!-- Summary Border (placeholder) -->
+            <Border Grid.Row="0"
+                    Background="White"
+                    BorderThickness="1"
+                    BorderBrush="#DDDDDD"
+                    CornerRadius="5"
+                    BoxShadow="0 2 4 #20000000"
+                    IsVisible="{Binding IsLastPage}" Padding="20">
+                <!-- Content trimmed for brevity -->
+                <TextBlock Text="Summary" />
+            </Border>
+
+            <!-- Pagination -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10">
+                <Button Command="{Binding PreviousPageCommand}" Content="◀️ Previous" Margin="5,0" Background="#E3F2FD" Padding="15,8" />
+                <Border Background="#E3F2FD" CornerRadius="3" Padding="15,8" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding PageInfo}" FontWeight="Bold" VerticalAlignment="Center" />
                 </Border>
-                <Button Command="{Binding NextPageCommand}" 
-                        Content="Next ▶" 
-                        Margin="5,0"
-                        Background="#E3F2FD"
-                        Padding="15,8" />
+                <Button Command="{Binding NextPageCommand}" Content="Next ▶️" Margin="5,0" Background="#E3F2FD" Padding="15,8" />
             </StackPanel>
-            
-            <!-- Export Button with context menu for multiple formats -->
+
+            <!-- Export -->
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                <Button x:Name="ExportButton"
-                        Content="Export"
-                        IsEnabled="{Binding CanExport}"
-                        HorizontalContentAlignment="Center"
-                        Background="#388E3C"
-                        Foreground="White"
-                        Padding="15,8"
-                        Click="OnExportButtonClick">
-                    <Button.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="Excel (.xlsx)" Click="OnExportMenuItemClick" Tag="excel" />
-                            <MenuItem Header="PDF (.pdf)" Click="OnExportMenuItemClick" Tag="pdf" />
-                            <MenuItem Header="CSV (.csv)" Click="OnExportMenuItemClick" Tag="csv" />
-                            <MenuItem Header="Word (.docx)" Click="OnExportMenuItemClick" Tag="word" />
-                            <MenuItem Header="Text (.txt)" Click="OnExportMenuItemClick" Tag="txt" />
-                        </ContextMenu>
-                    </Button.ContextMenu>
-                </Button>
+                <Button Content="Export" IsEnabled="{Binding CanExport}" HorizontalContentAlignment="Center" Background="#388E3C" Foreground="White" Padding="15,8" />
             </StackPanel>
         </Grid>
         
-        <!-- Loading Overlay -->
-        <Grid Grid.RowSpan="2" Background="#80000000" IsVisible="{Binding IsLoading}">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                <ProgressBar IsIndeterminate="True" Width="100" Height="4" />
-                <TextBlock Text="Loading..." Foreground="White" Margin="0,10,0,0" />
+        <!-- Device Sync Status Section -->
+        <Border Classes="card" IsVisible="{Binding !IsSyncing}">
+            <StackPanel Spacing="8" Margin="8">
+                <TextBlock Text="Device Synchronization" FontWeight="Bold" />
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Grid.Column="0" Text="Status:" FontWeight="SemiBold" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding SyncStatus}" FontStyle="Italic" 
+                               Foreground="{Binding SyncStatus, Converter={StaticResource StatusColorConverter}}" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                    <TextBlock Text="Sync users from:" VerticalAlignment="Center" />
+                    <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" DisplayMemberBinding="{Binding Name}" MinWidth="150" />
+                    <Button Content="Start Sync" Command="{Binding SyncFromDeviceCommand}" Classes="accent" />
+                </StackPanel>
+                <TextBlock Text="This will import employees and fingerprint data from the selected device" FontStyle="Italic" Margin="0,8,0,0" />
             </StackPanel>
-        </Grid>
-    </Grid>
+        </Border>
+        
+        <!-- Error Message -->
+        <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding ErrorMessage, Converter={StaticResource NullToBool}}" 
+                   Foreground="Red" TextWrapping="Wrap" Margin="0,8,0,0" />
+        
+        <!-- Hidden DataGrid for backward compatibility -->
+        <DataGrid x:Name="EmployeesGrid" ItemsSource="{Binding Employees}" AutoGenerateColumns="False" Height="0" Opacity="0"
+                  SelectedItem="{Binding SelectedEmployee}" IsVisible="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="60" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Name" Binding="{Binding FullName}" Width="*"/>
+                <DataGridTextColumn Header="Department" Binding="{Binding Department.Name}" Width="150"/>
+                <DataGridTextColumn Header="Position" Binding="{Binding Position}" Width="150"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </StackPanel>
 </UserControl> 

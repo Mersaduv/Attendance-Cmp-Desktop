@@ -223,6 +223,11 @@ namespace AttandenceDesktop.ViewModels
                 {
                     AvailableDepartments = Departments
                 };
+                
+                // Generate unique employee ID
+                string employeeId = await _employeeService.GenerateUniqueEmployeeIdAsync();
+                dlgVm.EmployeeNumber = employeeId;
+                dlgVm.ZkUserId = employeeId;
 
                 var dlg = new Views.EmployeeDialog { DataContext = dlgVm };
                 var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
@@ -232,8 +237,24 @@ namespace AttandenceDesktop.ViewModels
                 if (result)
                 {
                     var employee = dlgVm.ToEmployee();
-                await _employeeService.CreateAsync(employee);
-                await LoadEmployeesAsync();
+                    
+                    // Create employee in database
+                    await _employeeService.CreateAsync(employee);
+                    
+                    // Add employee to all active devices
+                    foreach (var device in Devices)
+                    {
+                        try
+                        {
+                            await _deviceSyncService.AddEmployeeToDeviceAsync(device, employee);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Failed to add employee to device {device.Name}: {ex.Message}");
+                        }
+                    }
+                    
+                    await LoadEmployeesAsync();
                 }
             }
             catch (Exception ex)

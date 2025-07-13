@@ -21,6 +21,7 @@ namespace AttandenceDesktop.ViewModels
         private Department _selectedDepartment;
         private bool _isFlexibleHours;
         private double _requiredWorkHoursPerDay = 8.0;
+        private int _leaveDays = 2;
         private string? _zkUserId;
         private bool _isFingerprintRegistered;
         private byte[]? _fingerprintTemplate1;
@@ -107,6 +108,13 @@ namespace AttandenceDesktop.ViewModels
             get => _requiredWorkHoursPerDay;
             set => SetProperty(ref _requiredWorkHoursPerDay, value, true);
         }
+
+        [Range(0, 365, ErrorMessage = "Leave days must be between 0 and 365")]
+        public int LeaveDays
+        {
+            get => _leaveDays;
+            set => SetProperty(ref _leaveDays, value, true);
+        }
         
         [Required]
         public string? ZkUserId
@@ -177,11 +185,12 @@ namespace AttandenceDesktop.ViewModels
                 Position = Position,
                 EmployeeCode = string.IsNullOrWhiteSpace(EmployeeCode) ? EmployeeNumber : EmployeeCode,
                 EmployeeNumber = EmployeeNumber,
+                ZkUserId = ZkUserId ?? EmployeeNumber,
                 DepartmentId = DepartmentId,
                 HireDate = HireDate,
                 IsFlexibleHours = IsFlexibleHours,
                 RequiredWorkHoursPerDay = RequiredWorkHoursPerDay,
-                ZkUserId = ZkUserId,
+                LeaveDays = LeaveDays,
                 FingerprintTemplate1 = FingerprintTemplate1
             };
         }
@@ -202,6 +211,7 @@ namespace AttandenceDesktop.ViewModels
             HireDate = employee.HireDate;
             IsFlexibleHours = employee.IsFlexibleHours;
             RequiredWorkHoursPerDay = employee.RequiredWorkHoursPerDay;
+            LeaveDays = employee.LeaveDays;
             ZkUserId = employee.ZkUserId;
             FingerprintTemplate1 = employee.FingerprintTemplate1;
             IsFingerprintRegistered = employee.FingerprintTemplate1 != null && employee.FingerprintTemplate1.Length > 0;

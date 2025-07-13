@@ -9,6 +9,19 @@ using AttandenceDesktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Layout;
+using System.Diagnostics;
+using System.Net.Http;
+using System.Text.Json;
+using AttandenceDesktop.Data;
+using Microsoft.EntityFrameworkCore;
+using AttandenceDesktop.Services;
+using static AttandenceDesktop.Services.ReportService;
+
 namespace AttandenceDesktop.ViewModels
 {
     public enum ReportTypeEnum
@@ -18,113 +31,222 @@ namespace AttandenceDesktop.ViewModels
         Company
     }
     
-    public partial class ReportViewModel : ViewModelBase, IDisposable
+    public class DeviceInfo
     {
-        private readonly ReportService _reportService;
-        private readonly EmployeeService _employeeService;
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+    }
+    
+    public partial class ReportViewModel : ViewModelBase, IDisposable
+    {        private readonly EmployeeService _employeeService;
         private readonly DepartmentService _departmentService;
+        private readonly DeviceService _deviceService;
         private readonly DataRefreshService _dataRefreshService;
-        private readonly ExportService _exportService;
-        private readonly ReportGridExportService _gridExportService;
+        private readonly DeviceSyncService _deviceSyncService;
+        private readonly AttendanceService _attendanceService;
+        private readonly ReportService _reportService;
+        private readonly Func<ApplicationDbContext> _contextFactory;
         
-        private DateTime _startDate = DateTime.Today.AddDays(-30);
-        private DateTime _endDate = DateTime.Today;
-        private int? _selectedEmployeeId;
-        private int? _selectedDepartmentId;
-        private int _reportTypeIndex;
-        private bool _isLoading;
-        private AttendanceReportStatistics _statistics = new AttendanceReportStatistics();
+        [ObservableProperty] private ObservableCollection<Employee> _employees;
+        [ObservableProperty] private List<Department> _departments;
+        [ObservableProperty] private Employee? _selectedEmployee;
+        [ObservableProperty] private bool _isLoading;
+        [ObservableProperty] private string _errorMessage;
+        [ObservableProperty] private bool _isSyncing;
+        [ObservableProperty] private string _syncStatus;
+        [ObservableProperty] private ObservableCollection<Device> _devices;
+        [ObservableProperty] private Device? _selectedDevice;
         
-        // Pagination properties
-        private const int _pageSize = 10;
-        private int _currentPage = 1;
-        private int _totalPages = 1;
-        private bool _hasSummaryPage = false;
-        private List<AttendanceReportItem> _allReportItems = new List<AttendanceReportItem>();
-        private TimeSpan _totalLateMinutes = TimeSpan.Zero;
-        private TimeSpan _totalEarlyDepartureMinutes = TimeSpan.Zero;
-        private TimeSpan _totalOvertimeMinutes = TimeSpan.Zero;
+        // New properties for Report Controls
+        [ObservableProperty] private int _reportTypeIndex;
+        [ObservableProperty] private bool _isEmployeeSelectionVisible;
+        [ObservableProperty] private bool _isDepartmentSelectionVisible;
+        [ObservableProperty] private int? _selectedEmployeeId;
+        [ObservableProperty] private int? _selectedDepartmentId;
+        [ObservableProperty] private DateTime _startDate;
+        [ObservableProperty] private DateTime _endDate;
+        
+        // Attendance report data
+        [ObservableProperty] private ObservableCollection<AttendanceLog> _attendanceLogs;
+        [ObservableProperty] private bool _isAttendanceReportVisible;
+        // DataGrid report items and paging
+        [ObservableProperty] private ObservableCollection<AttendanceReportItem> _reportItems;
+        [ObservableProperty] private bool _isLastPage;
+        [ObservableProperty] private string _pageInfo;
+        [ObservableProperty] private bool _canExport;
+        [ObservableProperty] private TimeSpan _totalLateTime;
+        [ObservableProperty] private TimeSpan _totalEarlyDepartureTime;
+        [ObservableProperty] private TimeSpan _totalOvertimeTime;
+        [ObservableProperty] private int _absentDays;
+        [ObservableProperty] private AttendanceReportStatistics _statistics;
+        [ObservableProperty] private bool _isAttendanceSyncing;
+        private List<AttendanceReportItem> _allReportItems = new();
+        private const int PageSize = 10;
+        [ObservableProperty] private int _currentPage;
+        [ObservableProperty] private int _totalPages;
+
+        public IRelayCommand PreviousPageCommand { get; }
+        public IRelayCommand NextPageCommand { get; }
+        
+        public ICommand LoadEmployeesCommand { get; }
+        public IRelayCommand AddFingerprintCommand { get; }
+        public IRelayCommand SyncFromDeviceCommand { get; }
+        public IRelayCommand AddCommand { get; }
+        public IRelayCommand EditCommand { get; }
+        public IRelayCommand DeleteCommand { get; }
+        public IRelayCommand DeleteAllCommand { get; }
+        public IRelayCommand GenerateReportCommand { get; }
+        public IRelayCommand ClearReportCommand { get; }
+        public IRelayCommand SyncAttendanceCommand { get; }
+        public IRelayCommand ClearAttendanceDataCommand { get; }
         
         public ReportViewModel(
-            ReportService reportService,
             EmployeeService employeeService,
             DepartmentService departmentService,
+            DeviceService deviceService, 
             DataRefreshService dataRefreshService,
-            ExportService exportService,
-            ReportGridExportService gridExportService)
+            DeviceSyncService deviceSyncService,
+            AttendanceService attendanceService,
+            ReportService reportService,
+            Func<ApplicationDbContext> contextFactory)
         {
-            _reportService = reportService;
             _employeeService = employeeService;
             _departmentService = departmentService;
+            _deviceService = deviceService;
             _dataRefreshService = dataRefreshService;
-            _exportService = exportService;
-            _gridExportService = gridExportService;
+            _deviceSyncService = deviceSyncService;
+            _attendanceService = attendanceService;
+            _reportService = reportService;
+            _contextFactory = contextFactory;
             
+            Employees = new ObservableCollection<Employee>();
+            Departments = new List<Department>();
+            Devices = new ObservableCollection<Device>();
+            IsLoading = false;
+            IsSyncing = false;
+            SyncStatus = string.Empty;
+            ErrorMessage = string.Empty;
+            
+            // Initialize commands
+            LoadEmployeesCommand = new AsyncRelayCommand(LoadEmployeesAsync);
+            AddFingerprintCommand = new AsyncRelayCommand<Employee>(AddFingerprintAsync);
+            SyncFromDeviceCommand = new AsyncRelayCommand(SyncFromDeviceAsync);
+            AddCommand = new AsyncRelayCommand(AddEmployeeAsync);
+            EditCommand = new AsyncRelayCommand<Employee>(EditEmployeeAsync);
+            DeleteCommand = new AsyncRelayCommand<Employee>(DeleteEmployeeAsync);
+            DeleteAllCommand = new AsyncRelayCommand(DeleteAllEmployeesAsync);
             GenerateReportCommand = new AsyncRelayCommand(GenerateReportAsync);
-            ExportReportCommand = new AsyncRelayCommand(async () => await ExportToFormat("excel"));
-            NextPageCommand = new RelayCommand(NextPage, CanGoToNextPage);
-            PreviousPageCommand = new RelayCommand(PreviousPage, CanGoToPreviousPage);
+            ClearReportCommand = new RelayCommand(ClearReport);
+            SyncAttendanceCommand = new AsyncRelayCommand(SyncAttendanceAsync);
+            ClearAttendanceDataCommand = new AsyncRelayCommand(ClearAttendanceDataAsync);
+            PreviousPageCommand = new RelayCommand(PreviousPage, () => CurrentPage > 1);
+            NextPageCommand = new RelayCommand(NextPage, () => CurrentPage < TotalPages);
+
+            ReportItems = new ObservableCollection<AttendanceReportItem>();
+            IsLastPage = false;
+            CurrentPage = 1;
+            TotalPages = 1;
+            PageInfo = "Page 1/1";
+            CanExport = false;
+            TotalLateTime = TimeSpan.Zero;
+            TotalEarlyDepartureTime = TimeSpan.Zero;
+            TotalOvertimeTime = TimeSpan.Zero;
+            AbsentDays = 0;
+            Statistics = new AttendanceReportStatistics();
+            
+            AttendanceLogs = new ObservableCollection<AttendanceLog>();
+            IsAttendanceReportVisible = false;
+            
+            // Initialize report control defaults
+            ReportTypeIndex = 0;
+            StartDate = DateTime.Today;
+            EndDate = DateTime.Today;
+            IsEmployeeSelectionVisible = true;
+            IsDepartmentSelectionVisible = false;
             
             // Subscribe to data change events
-            _dataRefreshService.AttendanceChanged += OnAttendanceChanged;
             _dataRefreshService.EmployeesChanged += OnEmployeesChanged;
             _dataRefreshService.DepartmentsChanged += OnDepartmentsChanged;
             
-            // Initialize data asynchronously
-            InitializeDataAsync();
-            
-            // Ensure CanExport initial state
-            OnPropertyChanged(nameof(CanExport));
+            // Load data automatically when view model is created
+            _ = InitializeAsync();
         }
         
         // Parameterless constructor for design-time support
         public ReportViewModel()
         {
-            _reportService = null!;
             _employeeService = null!;
             _departmentService = null!;
+            _deviceService = null!;
             _dataRefreshService = null!;
-            _exportService = null!;
-            _gridExportService = null!;
+            _deviceSyncService = null!;
+            _attendanceService = null!;
+            _reportService = null!;
+            _contextFactory = null!;
             
-            GenerateReportCommand = new AsyncRelayCommand(async () => {});
-            ExportReportCommand = new AsyncRelayCommand(async () => {});
-            NextPageCommand = new RelayCommand(() => {});
-            PreviousPageCommand = new RelayCommand(() => {});
+            _employees = new ObservableCollection<Employee>();
+            _departments = new List<Department>();
+            _devices = new ObservableCollection<Device>();
+            _selectedEmployee = null;
+            _selectedDevice = null;
+            _errorMessage = string.Empty;
+            _syncStatus = string.Empty;
             
-            // Add design-time data
-            Employees = new ObservableCollection<Employee>();
-            Departments = new ObservableCollection<Department>();
+            LoadEmployeesCommand = new AsyncRelayCommand(async () => { });
+            AddFingerprintCommand = new AsyncRelayCommand<Employee>(async (e) => { });
+            SyncFromDeviceCommand = new AsyncRelayCommand(async () => { });
+            AddCommand = new AsyncRelayCommand(async () => { });
+            EditCommand = new AsyncRelayCommand<Employee>(async (e) => { });
+            DeleteCommand = new AsyncRelayCommand<Employee>(async (e) => { });
+            GenerateReportCommand = new AsyncRelayCommand(async () => { });
+            ClearReportCommand = new RelayCommand(() => { });
+            SyncAttendanceCommand = new AsyncRelayCommand(async () => { });
+            ClearAttendanceDataCommand = new AsyncRelayCommand(async () => { });
+            PreviousPageCommand = new RelayCommand(() => { });
+            NextPageCommand = new RelayCommand(() => { });
             ReportItems = new ObservableCollection<AttendanceReportItem>();
+            IsLastPage = false;
+            CurrentPage = 1;
+            TotalPages = 1;
+            PageInfo = "Page 1/1";
+            CanExport = false;
+            TotalLateTime = TimeSpan.Zero;
+            TotalEarlyDepartureTime = TimeSpan.Zero;
+            TotalOvertimeTime = TimeSpan.Zero;
+            AbsentDays = 0;
+            Statistics = new AttendanceReportStatistics();
+            AttendanceLogs = new ObservableCollection<AttendanceLog>();
+            IsAttendanceReportVisible = false;
             
-            // Create sample statistics
-            _statistics = new AttendanceReportStatistics();
-            // We can't set read-only properties directly, but we can create a new instance with some values
-            _statistics = new AttendanceReportStatistics
-            {
-                PresentDays = 20,
-                AbsentDays = 2,
-                LateArrivals = 3,
-                EarlyDepartures = 1,
-                OvertimeDays = 5
-            };
+            // Design-time defaults for report controls
+            ReportTypeIndex = 0;
+            StartDate = DateTime.Today.AddDays(-7);
+            EndDate = DateTime.Today;
+            IsEmployeeSelectionVisible = true;
+            IsDepartmentSelectionVisible = false;
+            
+            // Add some design-time data
+            Employees.Add(new Employee { 
+                Id = 1, 
+                FirstName = "John", 
+                LastName = "Doe", 
+                Email = "john@example.com",
+                Position = "Developer"
+            });
+            Employees.Add(new Employee { 
+                Id = 2, 
+                FirstName = "Jane", 
+                LastName = "Smith", 
+                Email = "jane@example.com",
+                Position = "Manager"
+            });
         }
         
         public void Dispose()
         {
             // Unsubscribe from events
-            _dataRefreshService.AttendanceChanged -= OnAttendanceChanged;
             _dataRefreshService.EmployeesChanged -= OnEmployeesChanged;
             _dataRefreshService.DepartmentsChanged -= OnDepartmentsChanged;
-        }
-        
-        private void OnAttendanceChanged(object? sender, EventArgs e)
-        {
-            // If we have an active report, refresh it
-            if (_allReportItems.Count > 0)
-            {
-                _ = GenerateReportAsync();
-            }
         }
         
         private void OnEmployeesChanged(object? sender, EventArgs e)
@@ -137,274 +259,245 @@ namespace AttandenceDesktop.ViewModels
             _ = LoadDepartmentsAsync();
         }
         
-        private async Task InitializeDataAsync()
+        private async Task InitializeAsync()
         {
+            IsLoading = true;
+            try
+            {
+                await LoadDepartmentsAsync();
             await LoadEmployeesAsync();
-            await LoadDepartmentsAsync();
-        }
-        
-        public DateTime StartDate
-        {
-            get => _startDate;
-            set => SetProperty(ref _startDate, value);
-        }
-        
-        public DateTime EndDate
-        {
-            get => _endDate;
-            set => SetProperty(ref _endDate, value);
-        }
-        
-        public int? SelectedEmployeeId
-        {
-            get => _selectedEmployeeId;
-            set => SetProperty(ref _selectedEmployeeId, value);
-        }
-        
-        public int? SelectedDepartmentId
-        {
-            get => _selectedDepartmentId;
-            set => SetProperty(ref _selectedDepartmentId, value);
-        }
-        
-        public int ReportTypeIndex
-        {
-            get => _reportTypeIndex;
-            set 
+                await LoadDevicesAsync();
+            }
+            catch (Exception ex)
             {
-                if (SetProperty(ref _reportTypeIndex, value))
-                {
-                    // Reset selected values when report type changes
-                    if (_reportTypeIndex == 0) // Employee
-                    {
-                        SelectedDepartmentId = null;
-                    }
-                    else if (_reportTypeIndex == 1) // Department
-                    {
-                        SelectedEmployeeId = null;
-                    }
-                    else if (_reportTypeIndex == 2) // Company
-                    {
-                        SelectedEmployeeId = null;
-                        SelectedDepartmentId = null;
-                    }
-                    
-                    // Notify UI that IsEmployeeSelectionVisible and IsDepartmentSelectionVisible might have changed
-                    OnPropertyChanged(nameof(IsEmployeeSelectionVisible));
-                    OnPropertyChanged(nameof(IsDepartmentSelectionVisible));
-                }
+                Debug.WriteLine($"Error loading data: {ex.Message}");
+                ErrorMessage = $"Failed to load data: {ex.Message}";
+            }
+            finally
+            {
+                IsLoading = false;
             }
         }
         
-        public bool IsLoading
+        public async Task LoadEmployeesAsync()
         {
-            get => _isLoading;
-            set
+            try
             {
-                if (SetProperty(ref _isLoading, value))
-                {
-                    OnPropertyChanged(nameof(CanExport));
-                }
-            }
-        }
-        
-        // Properties to control visibility of selection controls
-        public bool IsEmployeeSelectionVisible => ReportTypeIndex == 0; // Employee
-        public bool IsDepartmentSelectionVisible => ReportTypeIndex == 1; // Department
-        
-        // Pagination properties
-        public int CurrentPage
-        {
-            get => _currentPage;
-            set
-            {
-                if (_currentPage != value && value >= 1 && value <= _totalPages)
-                {
-                    SetProperty(ref _currentPage, value);
-                    UpdateDisplayedItems();
-                    
-                    // Update command availability
-                    ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
-                    ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
-                    
-                    OnPropertyChanged(nameof(PageInfo));
-                    OnPropertyChanged(nameof(IsLastPage));
-                }
-            }
-        }
-        
-        public int TotalPages
-        {
-            get => _totalPages;
-            private set => SetProperty(ref _totalPages, value);
-        }
-        
-        public string PageInfo => $"{CurrentPage} / {TotalPages}";
-        
-        public bool IsLastPage => _hasSummaryPage && CurrentPage == TotalPages;
-        
-        public ICommand NextPageCommand { get; }
-        public ICommand PreviousPageCommand { get; }
-        
-        private bool CanGoToNextPage() => CurrentPage < TotalPages && TotalPages > 1;
-        private bool CanGoToPreviousPage() => CurrentPage > 1;
-        
-        private async void NextPage()
-        {
-            if (CurrentPage < TotalPages)
-            {
-                CurrentPage++;
-                ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
-                ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+                IsLoading = true;
+                ErrorMessage = null;
                 
-                // Ensure complete data is loaded for the new page
-                await UpdateDisplayedItemsAsync();
-            }
-        }
-        
-        private async void PreviousPage()
-        {
-            if (CurrentPage > 1)
-            {
-                CurrentPage--;
-                ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
-                ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
+                var employeesList = await _employeeService.GetAllAsync();
+                Employees = new ObservableCollection<Employee>(employeesList ?? new List<Employee>());
                 
-                // Ensure complete data is loaded for the new page
-                await UpdateDisplayedItemsAsync();
+                Debug.WriteLine($"Loaded {Employees.Count} employees");
             }
-        }
-        
-        // Summary information for the last page
-        public int AbsentDays => Statistics.AbsentDays;
-        
-        public TimeSpan TotalLateMinutes => _totalLateMinutes;
-        public string TotalLateTime => $"{(int)TotalLateMinutes.TotalHours:00}:{TotalLateMinutes.Minutes:00}";
-        
-        public TimeSpan TotalEarlyDepartureMinutes => _totalEarlyDepartureMinutes;
-        public string TotalEarlyDepartureTime => $"{(int)TotalEarlyDepartureMinutes.TotalHours:00}:{TotalEarlyDepartureMinutes.Minutes:00}";
-        
-        public TimeSpan TotalOvertimeMinutes => _totalOvertimeMinutes;
-        public string TotalOvertimeTime => $"{(int)TotalOvertimeMinutes.TotalHours:00}:{TotalOvertimeMinutes.Minutes:00}";
-        
-        public ObservableCollection<Employee> Employees { get; } = new();
-        public ObservableCollection<Department> Departments { get; } = new();
-        public ObservableCollection<AttendanceReportItem> ReportItems { get; } = new();
-        
-        public AttendanceReportStatistics Statistics
-        {
-            get => _statistics;
-            private set => SetProperty(ref _statistics, value);
-        }
-        
-        public ICommand GenerateReportCommand { get; }
-        public ICommand ExportReportCommand { get; }
-        
-        private async Task LoadEmployeesAsync()
-        {
-            var employees = await _employeeService.GetAllAsync();
-            Employees.Clear();
-            foreach (var employee in employees)
+            catch (Exception ex)
             {
-                Employees.Add(employee);
+                Debug.WriteLine($"Error loading employees: {ex.Message}");
+                ErrorMessage = $"Failed to load employees: {ex.Message}";
+            }
+            finally
+            {
+                IsLoading = false;
             }
         }
         
         private async Task LoadDepartmentsAsync()
         {
-            var departments = await _departmentService.GetAllAsync();
-            Departments.Clear();
-            foreach (var department in departments)
-            {
-                Departments.Add(department);
-            }
-        }
-        
-        private async Task GenerateReportAsync()
-        {
-            Program.LogMessage($"ReportViewModel: Starting report generation. Type: {(ReportTypeEnum)_reportTypeIndex}, StartDate: {StartDate:yyyy-MM-dd}, EndDate: {EndDate:yyyy-MM-dd}");
-            
-            if (StartDate > EndDate)
-            {
-                Program.LogMessage("ReportViewModel: Error - Start date is after end date");
-                // Handle error - we could show a message to the user here
-                return;
-            }
-            
-            IsLoading = true;
-            _allReportItems.Clear();
-            _totalPages = 1;
-            _currentPage = 1;
-            
-            Program.LogMessage($"ReportViewModel: Cleared previous report data. Starting data fetch...");
-            
             try
             {
-                // Get complete attendance data for the selected entity
-                _allReportItems = await GetCompleteDataAsync();
-                OnPropertyChanged(nameof(CanExport));
+                var departmentsList = await _departmentService.GetAllAsync();
+                Departments = departmentsList ?? new List<Department>();
                 
-                // Calculate statistics based on all data
-                Program.LogMessage("ReportViewModel: Calculating report statistics");
-                _statistics = _reportService.GetReportStatistics(_allReportItems);
-                
-                // Calculate aggregate minutes across all data
-                var timeValues = await GetCompleteTimeValuesAsync();
-                _totalLateMinutes = timeValues["LateMinutes"];
-                _totalEarlyDepartureMinutes = timeValues["EarlyDepartureMinutes"];
-                _totalOvertimeMinutes = timeValues["OvertimeMinutes"];
-                
-                Program.LogMessage($"ReportViewModel: Calculated time totals - Late: {_totalLateMinutes}, Early Departure: {_totalEarlyDepartureMinutes}, Overtime: {_totalOvertimeMinutes}");
-                
-                // Calculate pagination
-                int itemCount = _allReportItems.Count;
-                _hasSummaryPage = itemCount > 0 ? true : false;
-                
-                // Fix the pagination calculation
-                if (itemCount == 0)
-                {
-                    _totalPages = 1;
-                }
-                else
-                {
-                    // Calculate regular pages (full page size items per page)
-                    int regularPages = (itemCount / _pageSize);
-                    
-                    // Add an extra page if there are remaining items
-                    if (itemCount % _pageSize > 0)
-                    {
-                        regularPages++;
-                    }
-                    
-                    // Add summary page if needed
-                    _totalPages = _hasSummaryPage ? regularPages + 1 : regularPages;
-                }
-                
-                Program.LogMessage($"ReportViewModel: Pagination setup - Items: {itemCount}, Pages: {_totalPages}");
-                
-                // Update UI bindings
-                OnPropertyChanged(nameof(TotalPages));
-                OnPropertyChanged(nameof(PageInfo));
-                OnPropertyChanged(nameof(Statistics));
-                OnPropertyChanged(nameof(TotalLateMinutes));
-                OnPropertyChanged(nameof(TotalLateTime));
-                OnPropertyChanged(nameof(TotalEarlyDepartureMinutes));
-                OnPropertyChanged(nameof(TotalEarlyDepartureTime));
-                OnPropertyChanged(nameof(TotalOvertimeMinutes));
-                OnPropertyChanged(nameof(TotalOvertimeTime));
-                
-                // Force command can-execute refresh
-                ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
-                ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
-                
-                // Update displayed items for the current page
-                await UpdateDisplayedItemsAsync();
-                Program.LogMessage("ReportViewModel: Report generation completed successfully");
+                Debug.WriteLine($"Loaded {Departments.Count} departments");
             }
             catch (Exception ex)
             {
-                Program.LogMessage($"ReportViewModel: ERROR during report generation - {ex.Message}\n{ex.StackTrace}");
-                // Handle error - could show message to user
+                Debug.WriteLine($"Error loading departments: {ex.Message}");
+                ErrorMessage = $"Failed to load departments: {ex.Message}";
+            }
+        }
+        
+        private async Task LoadDevicesAsync()
+        {
+            try
+            {
+                var devicesList = await _deviceService.GetAllAsync();
+                Devices = new ObservableCollection<Device>(devicesList ?? new List<Device>());
+                
+                Debug.WriteLine($"Loaded {Devices.Count} devices");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error loading devices: {ex.Message}");
+                ErrorMessage = $"Failed to load devices: {ex.Message}";
+            }
+        }
+        
+        private async Task AddEmployeeAsync()
+        {
+            try
+            {
+                var dlgVm = new EmployeeDialogViewModel
+                {
+                    AvailableDepartments = Departments
+                };
+                
+                // Generate unique employee ID
+                string employeeId = await _employeeService.GenerateUniqueEmployeeIdAsync();
+                dlgVm.EmployeeNumber = employeeId;
+                dlgVm.ZkUserId = employeeId;
+
+                var dlg = new Views.EmployeeDialog { DataContext = dlgVm };
+                var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
+                    ? desktop.MainWindow : null;
+                
+                var result = await dlg.ShowDialog<bool>(mainWindow);
+                if (result)
+                {
+                    var employee = dlgVm.ToEmployee();
+                    
+                    // Create employee in database
+                    await _employeeService.CreateAsync(employee);
+                    
+                    // Add employee to all active devices
+                    foreach (var device in Devices)
+                    {
+                        try
+                        {
+                            await _deviceSyncService.AddEmployeeToDeviceAsync(device, employee);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Failed to add employee to device {device.Name}: {ex.Message}");
+                        }
+                    }
+                    
+                    await LoadEmployeesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error creating employee: {ex.Message}");
+                ErrorMessage = $"Failed to create employee: {ex.Message}";
+            }
+        }
+        
+        private async Task EditEmployeeAsync(Employee? employee)
+        {
+            if (employee == null) return;
+            
+            try
+            {
+                var dlgVm = new EmployeeDialogViewModel
+                {
+                    AvailableDepartments = Departments
+                };
+                dlgVm.LoadFromEmployee(employee);
+                
+                // Set the selected department based on the employee's department ID
+                dlgVm.SelectedDepartment = Departments.FirstOrDefault(d => d.Id == employee.DepartmentId);
+                
+                var dlg = new Views.EmployeeDialog { DataContext = dlgVm };
+                var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
+                    ? desktop.MainWindow : null;
+                
+                var result = await dlg.ShowDialog<bool>(mainWindow);
+                if (result)
+                {
+                    var updatedEmployee = dlgVm.ToEmployee();
+                    
+                    // Preserve fingerprint data if it wasn't modified
+                    if (updatedEmployee.FingerprintTemplate1 == null && employee.FingerprintTemplate1 != null)
+                    {
+                        updatedEmployee.FingerprintTemplate1 = employee.FingerprintTemplate1;
+                    }
+                    if (updatedEmployee.FingerprintTemplate2 == null && employee.FingerprintTemplate2 != null)
+                    {
+                        updatedEmployee.FingerprintTemplate2 = employee.FingerprintTemplate2;
+                    }
+                    
+                    await _employeeService.UpdateAsync(updatedEmployee);
+                await LoadEmployeesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error updating employee: {ex.Message}");
+                ErrorMessage = $"Failed to update employee: {ex.Message}";
+            }
+        }
+        
+        private async Task DeleteEmployeeAsync(Employee? employee)
+        {
+            if (employee == null) return;
+            
+            try
+            {
+                // Ask for confirmation
+                var result = await ShowConfirmationDialogAsync($"Delete {employee.FullName}?", 
+                    $"Are you sure you want to delete {employee.FullName}? This action cannot be undone.");
+                
+                if (!result) return;
+                
+                // Delete the employee
+                await _employeeService.DeleteAsync(employee.Id);
+                
+                // Reload the list
+                await LoadEmployeesAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error deleting employee: {ex.Message}");
+                ErrorMessage = $"Failed to delete employee: {ex.Message}";
+            }
+        }
+        
+        private async Task DeleteAllEmployeesAsync()
+        {
+            if (Employees.Count == 0) 
+            {
+                await ShowMessageAsync("No Employees", "There are no employees to delete.");
+                return;
+            }
+            
+            try
+            {
+                // Ask for confirmation with extra warning
+                var result = await ShowConfirmationDialogAsync("Delete ALL Employees?", 
+                    $"Are you sure you want to delete ALL {Employees.Count} employees? This action CANNOT be undone and will remove all employee data from the system.");
+                
+                if (!result) return;
+                
+                // Double-check with another confirmation
+                result = await ShowConfirmationDialogAsync("FINAL WARNING", 
+                    "This will permanently delete ALL employee records. Are you absolutely sure?");
+                
+                if (!result) return;
+                
+                // Show loading indicator
+                IsLoading = true;
+                ErrorMessage = string.Empty;
+                
+                // Delete all employees one by one
+                foreach (var employee in Employees.ToList())
+                {
+                    await _employeeService.DeleteAsync(employee.Id);
+                }
+                
+                // Reload the list
+                await LoadEmployeesAsync();
+                
+                // Show success message
+                await ShowMessageAsync("Success", "All employees have been deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error deleting all employees: {ex.Message}");
+                ErrorMessage = $"Failed to delete all employees: {ex.Message}";
+                
+                // Reload to see what's left
+                await LoadEmployeesAsync();
             }
             finally
             {
@@ -412,101 +505,362 @@ namespace AttandenceDesktop.ViewModels
             }
         }
         
-        private void UpdateDisplayedItems()
+        private async Task AddFingerprintAsync(Employee? emp)
         {
-            // Use the async version by calling it and not waiting
-            _ = UpdateDisplayedItemsAsync();
+            if (emp == null) return;
+            
+            try
+            {
+                // Check if we have devices configured
+                if (Devices.Count == 0)
+                {
+                    await ShowMessageAsync("No Devices", "Please configure at least one device first to register fingerprints");
+                    return;
+                }
+                
+                var dlgVm = new FingerprintDialogViewModel(emp, Devices.ToList());
+                var dlg = new Views.FingerprintDialog { DataContext = dlgVm };
+                var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
+                    ? desktop.MainWindow : null;
+                
+                var result = await dlg.ShowDialog<bool>(mainWindow);
+                if (result)
+                {
+                    // Get all registered templates from the dialog
+                    var registeredTemplates = dlg.RegisteredTemplates;
+                    
+                    if (registeredTemplates != null && registeredTemplates.Count > 0)
+                    {
+                        // Update the employee with the registered templates
+                        Program.LogMessage($"Updating employee {emp.Id} ({emp.FullName}) with {registeredTemplates.Count} fingerprint templates");
+                        
+                        // Default templates for Employee model (only supports 2 templates)
+                        if (registeredTemplates.TryGetValue(4, out byte[]? leftThumb))
+                        {
+                            emp.FingerprintTemplate1 = leftThumb;
+                            Program.LogMessage($"Set Left Thumb (4) template: {leftThumb.Length} bytes");
+                        }
+                        
+                        if (registeredTemplates.TryGetValue(5, out byte[]? rightThumb))
+                        {
+                            emp.FingerprintTemplate2 = rightThumb;
+                            Program.LogMessage($"Set Right Thumb (5) template: {rightThumb.Length} bytes");
+                        }
+                        
+                        // Save the employee to the database
+                        await _employeeService.UpdateAsync(emp);
+                        Program.LogMessage($"Successfully saved fingerprint templates for employee {emp.Id} ({emp.FullName})");
+                    }
+                    
+                    await LoadEmployeesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error registering fingerprint: {ex.Message}");
+                ErrorMessage = $"Failed to register fingerprint: {ex.Message}";
+            }
         }
         
-        private async Task ExportReportAsync(string format)
+        /// <summary>
+        /// Syncs employee data from a device
+        /// </summary>
+        private async Task SyncFromDeviceAsync()
         {
-            if (_exportService == null)
-                return;
+            if (SelectedDevice == null)
+            {
+                // If no device is selected, show device selection dialog
+                await ShowDeviceSelectionDialogAsync();
+                if (SelectedDevice == null) return;
+            }
+            
+            IsSyncing = true;
+            SyncStatus = "Connecting to device...";
+            
+            try
+            {
+                SyncStatus = $"Syncing users from {SelectedDevice.Name}...";
+                var result = await _deviceSyncService.SyncUsersFromDeviceAsync(SelectedDevice);
+                
+                if (result.Success)
+                {
+                    await LoadEmployeesAsync();
+                    SyncStatus = result.Message;
+                    await ShowMessageAsync("Sync Complete", 
+                        $"Successfully synced users from device.\n\n" +
+                        $"New employees: {result.NewRecords}\n" +
+                        $"Updated employees: {result.UpdatedRecords}\n" +
+                        $"Skipped: {result.SkippedRecords}");
+                }
+                else
+                {
+                    SyncStatus = "Sync failed";
+                    await ShowMessageAsync("Sync Failed", result.ErrorMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                SyncStatus = "Error during sync";
+                await ShowMessageAsync("Sync Error", $"An error occurred during synchronization: {ex.Message}");
+            }
+            finally
+            {
+                IsSyncing = false;
+            }
+        }
+        
+        private async Task ShowDeviceSelectionDialogAsync()
+        {
+            try
+            {
+                var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
+                    ? desktop.MainWindow : null;
+                
+                // Create list of devices
+                if (Devices.Count == 0)
+                {
+                    await ShowMessageAsync("No Devices", "No devices are configured. Please add a device first.");
+                    return;
+                }
+                
+                var dialog = new Window
+                {
+                    Title = "Select Device",
+                    Width = 400,
+                    Height = 200,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    CanResize = false
+                };
+                
+                var panel = new StackPanel
+                {
+                    Margin = new Thickness(20),
+                    Spacing = 20
+                };
+                
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "Select a device to sync from:",
+                    TextWrapping = TextWrapping.Wrap
+                });
+                
+                var comboBox = new ComboBox
+                {
+                    Width = 300,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    ItemsSource = Devices,
+                    DisplayMemberBinding = new Avalonia.Data.Binding("Name")
+                };
+                
+                panel.Children.Add(comboBox);
+                
+                var buttonPanel = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Spacing = 10
+                };
+                
+                var okButton = new Button
+                {
+                    Content = "Sync",
+                    Width = 80
+                };
+                
+                var cancelButton = new Button
+                {
+                    Content = "Cancel",
+                    Width = 80
+                };
+                
+                okButton.Click += (s, e) =>
+                {
+                    if (comboBox.SelectedItem is Device selectedDevice)
+                    {
+                        SelectedDevice = selectedDevice;
+                    }
+                    dialog.Close();
+                };
+                
+                cancelButton.Click += (s, e) =>
+                {
+                    dialog.Close();
+                };
+                
+                buttonPanel.Children.Add(cancelButton);
+                buttonPanel.Children.Add(okButton);
+                panel.Children.Add(buttonPanel);
+                dialog.Content = panel;
+                
+                await dialog.ShowDialog(mainWindow);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error showing device selection dialog: {ex.Message}");
+            }
+        }
+        
+        private async Task ShowMessageAsync(string title, string message)
+        {
+            var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
+                ? desktop.MainWindow : null;
+                
+            var dialog = new Window
+            {
+                Title = title,
+                Width = 400,
+                Height = 200,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                CanResize = false
+            };
+            
+            var panel = new StackPanel
+            {
+                Margin = new Thickness(20)
+            };
+            
+            panel.Children.Add(new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 20)
+            });
+            
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            
+            var okButton = new Button
+            {
+                Content = "OK",
+                Width = 80
+            };
+            
+            okButton.Click += (s, e) => dialog.Close();
+            buttonPanel.Children.Add(okButton);
+            panel.Children.Add(buttonPanel);
+            dialog.Content = panel;
+            
+            await dialog.ShowDialog(mainWindow);
+        }
 
-            if (_allReportItems.Count == 0)
-                return;
+        private async Task<bool> ShowConfirmationDialogAsync(string title, string message)
+        {
+            var mainWindow = App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop 
+                ? desktop.MainWindow : null;
 
+            var dialog = new Window
+            {
+                Title = title,
+                Width = 400,
+                Height = 200,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                CanResize = false
+            };
+
+            var panel = new StackPanel
+            {
+                Margin = new Thickness(20)
+            };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 20)
+            });
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Spacing = 10
+            };
+
+            var yesButton = new Button
+            {
+                Content = "Yes",
+                Width = 80
+            };
+
+            var noButton = new Button
+            {
+                Content = "No",
+                Width = 80
+            };
+
+            var result = false;
+            
+            yesButton.Click += (s, e) =>
+            {
+                result = true;
+                dialog.Close();
+            };
+
+            noButton.Click += (s, e) =>
+            {
+                result = false;
+                dialog.Close();
+            };
+
+            buttonPanel.Children.Add(noButton);
+            buttonPanel.Children.Add(yesButton);
+            panel.Children.Add(buttonPanel);
+            dialog.Content = panel;
+
+            await dialog.ShowDialog(mainWindow);
+            return result;
+        }
+
+        private async Task GenerateReportAsync()
+        {
             try
             {
                 IsLoading = true;
-
-                // Determine default extension
-                var defaultExt = format.ToLower() switch
+                ErrorMessage = string.Empty;
+                AttendanceLogs.Clear();
+                
+                // Fetch prepared attendance report via ReportService
+                List<AttendanceReportItem> report;
+                if (ReportTypeIndex == (int)ReportTypeEnum.Employee && SelectedEmployeeId.HasValue)
                 {
-                    "excel" or "xlsx" => "xlsx",
-                    "pdf" => "pdf",
-                    "csv" => "csv",
-                    "word" or "docx" => "docx",
-                    "txt" => "txt",
-                    _ => format
-                };
-
-                var defaultFileName = $"AttendanceReport_{DateTime.Now:yyyyMMdd_HHmmss}.{defaultExt}";
-                var defaultDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-
-                string? filePath = null;
-
-                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-                {
-                    var topLevel = Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
-                    var mainWindow = topLevel?.MainWindow;
-
-                    if (mainWindow != null)
-                    {
-                        var fileOptions = new Avalonia.Platform.Storage.FilePickerSaveOptions
-                        {
-                            Title = $"Save {format.ToUpper()} Report",
-                            SuggestedFileName = defaultFileName,
-                            DefaultExtension = defaultExt
-                        };
-
-                        switch (format.ToLower())
-                        {
-                            case "excel":
-                            case "xlsx":
-                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("Excel Files") { Patterns = new[] { "*.xlsx" } } };
-                                break;
-                            case "pdf":
-                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("PDF Files") { Patterns = new[] { "*.pdf" } } };
-                                break;
-                            case "csv":
-                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("CSV Files") { Patterns = new[] { "*.csv" } } };
-                                break;
-                            case "word":
-                            case "docx":
-                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("Word Files") { Patterns = new[] { "*.docx" } } };
-                                break;
-                            case "txt":
-                                fileOptions.FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("Text Files") { Patterns = new[] { "*.txt" } } };
-                                break;
-                        }
-
-                        var file = await mainWindow.StorageProvider.SaveFilePickerAsync(fileOptions);
-                        if (file != null)
-                        {
-                            filePath = file.Path.LocalPath;
-                        }
-                    }
-                });
-
-                if (string.IsNullOrWhiteSpace(filePath))
-                {
-                    return;
+                    report = await _reportService.GenerateEmployeeAttendanceReportAsync(SelectedEmployeeId.Value, StartDate.Date, EndDate.Date);
                 }
-
-                // If excel, generate grid-style export
-                if (format.Equals("excel", StringComparison.OrdinalIgnoreCase) || format.Equals("xlsx", StringComparison.OrdinalIgnoreCase))
+                else if (ReportTypeIndex == (int)ReportTypeEnum.Department && SelectedDepartmentId.HasValue)
                 {
-                    await Task.Run(async () => await _gridExportService.ExportToExcelAsync(_allReportItems, filePath));
+                    report = await _reportService.GenerateDepartmentAttendanceReportAsync(SelectedDepartmentId.Value, StartDate.Date, EndDate.Date);
                 }
                 else
                 {
-                    await Task.Run(async () => await _exportService.ExportAsync(_allReportItems, format, filePath));
+                    report = await _reportService.GenerateCompanyAttendanceReportAsync(StartDate.Date, EndDate.Date);
                 }
+
+                _allReportItems = report;
+                CurrentPage = 1;
+                TotalPages = (int)Math.Ceiling((double)_allReportItems.Count / PageSize);
+                UpdatePageItems();
+                PageInfo = $"Page {CurrentPage}/{TotalPages}";
+                IsLastPage = CurrentPage == TotalPages;
+                PreviousPageCommand.NotifyCanExecuteChanged();
+                NextPageCommand.NotifyCanExecuteChanged();
+                CanExport = _allReportItems.Any();
+                // Compute totals and stats as before but using ReportItems (LateMinutes, etc.)
+                TotalLateTime = TimeSpan.FromTicks(ReportItems.Where(r => r.LateMinutes.HasValue).Sum(r => r.LateMinutes!.Value.Ticks));
+                TotalEarlyDepartureTime = TimeSpan.FromTicks(ReportItems.Where(r => r.EarlyDepartureMinutes.HasValue).Sum(r => r.EarlyDepartureMinutes!.Value.Ticks));
+                TotalOvertimeTime = TimeSpan.FromTicks(ReportItems.Where(r => r.OvertimeMinutes.HasValue).Sum(r => r.OvertimeMinutes!.Value.Ticks));
+                AbsentDays = ReportItems.Count(i => i.Status == "Absent");
+                int totalDays = (EndDate.Date - StartDate.Date).Days + 1;
+                Statistics = _reportService.GetReportStatistics(ReportItems.ToList());
+                Statistics.AbsentDays = AbsentDays;
+                Statistics.TotalDays = totalDays;
+                IsAttendanceReportVisible = true;
+                return;
             }
             catch (Exception ex)
             {
-                Program.LogMessage($"ReportViewModel Export error: {ex.Message}");
+                ErrorMessage = $"Failed to generate report: {ex.Message}";
             }
             finally
             {
@@ -514,194 +868,149 @@ namespace AttandenceDesktop.ViewModels
             }
         }
         
-        // Export helper that is invoked by the view (from context menu)
-        public async Task ExportToFormat(string format)
+        private void ClearReport()
         {
-            if (!CanExport || string.IsNullOrWhiteSpace(format))
-                return;
-
-            await ExportReportAsync(format);
+            AttendanceLogs.Clear();
+            _allReportItems.Clear();
+            ReportItems.Clear();
+            CurrentPage = 1; TotalPages = 1; PageInfo = "Page 0/0";
+            IsAttendanceReportVisible = false;
         }
-        
-        // Indicates whether the export button should be enabled
-        public bool CanExport => _allReportItems.Count > 0 && !IsLoading;
-        
-        // Get complete attendance data for an entity (employee/department/company) across all date range
-        private async Task<List<AttendanceReportItem>> GetCompleteDataAsync()
+
+        private void UpdatePageItems()
         {
-            List<AttendanceReportItem> reportItems = new();
-            
+            ReportItems.Clear();
+            var pageData = _allReportItems.Skip((CurrentPage - 1) * PageSize).Take(PageSize);
+            foreach (var item in pageData)
+            {
+                ReportItems.Add(item);
+            }
+        }
+
+        private void NextPage()
+        {
+            if (CurrentPage < TotalPages)
+            {
+                CurrentPage++;
+                UpdatePageItems();
+                PageInfo = $"Page {CurrentPage}/{TotalPages}";
+                IsLastPage = CurrentPage == TotalPages;
+                PreviousPageCommand.NotifyCanExecuteChanged();
+                NextPageCommand.NotifyCanExecuteChanged();
+            }
+        }
+
+        private void PreviousPage()
+        {
+            if (CurrentPage > 1)
+            {
+                CurrentPage--;
+                UpdatePageItems();
+                PageInfo = $"Page {CurrentPage}/{TotalPages}";
+                IsLastPage = CurrentPage == TotalPages;
+                PreviousPageCommand.NotifyCanExecuteChanged();
+                NextPageCommand.NotifyCanExecuteChanged();
+            }
+        }
+
+        // Automatically toggle selection visibility when report type changes
+        partial void OnReportTypeIndexChanged(int value)
+        {
+            IsEmployeeSelectionVisible = value == (int)ReportTypeEnum.Employee;
+            IsDepartmentSelectionVisible = value == (int)ReportTypeEnum.Department;
+        }
+
+        private async Task SyncAttendanceAsync()
+        {
+            if (IsAttendanceSyncing) return;
+            IsAttendanceSyncing = true;
             try
             {
-                // Based on the report type, call the appropriate service method
-                switch ((ReportTypeEnum)ReportTypeIndex)
+                var devicesToQuery = SelectedDevice != null ? new List<Device>{ SelectedDevice } : Devices.ToList();
+                var newPunches = new List<PunchLog>();
+                var affectedEmpIds = new HashSet<int>();
+
+                using var ctx = _contextFactory();
+                DateTime? lastTime = null;
+                foreach (var dev in devicesToQuery)
                 {
-                    case ReportTypeEnum.Employee:
-                        if (SelectedEmployeeId.HasValue)
+                    DateTime? currentLastTime = await ctx.PunchLogs.Where(p => p.DeviceId == dev.Id).OrderByDescending(p => p.PunchTime).Select(p => (DateTime?)p.PunchTime).FirstOrDefaultAsync();
+                    if (currentLastTime.HasValue)
+                    {
+                        lastTime = currentLastTime;
+                    }
+                    using var zk = new ZkTecoConnectionService();
+                    if (!zk.Connect(dev)) continue;
+                    var logs = zk.FetchLogs(dev, lastTime);
+                    foreach (var log in logs)
+                    {
+                        // resolve employee
+                        string rawId = log.DeviceRowId?.Split('-')[0] ?? "";
+                        var emp = await ctx.Employees.FirstOrDefaultAsync(e => e.ZkUserId == rawId);
+                        if (emp == null) continue; // skip unknown users
+                        log.EmployeeId = emp.Id;
+                        log.Employee = emp;
+                        // Detach Device navigation to avoid duplicate tracking conflicts
+                        log.Device = null;
+                        // Ensure EF treats as new entity
+                        log.Id = 0;
+                        // skip duplicates
+                        bool exists = await ctx.PunchLogs.AnyAsync(p => p.DeviceRowId == log.DeviceRowId);
+                        if (!exists)
                         {
-                            Program.LogMessage($"ReportViewModel: Fetching complete data for employee ID: {SelectedEmployeeId}");
-                            reportItems = await _reportService.GenerateEmployeeAttendanceReportAsync(
-                                SelectedEmployeeId.Value, StartDate, EndDate);
-                            Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} complete records for employee");
+                            ctx.PunchLogs.Add(log);
+                            newPunches.Add(log);
+                            affectedEmpIds.Add(emp.Id);
                         }
-                        break;
-                        
-                    case ReportTypeEnum.Department:
-                        if (SelectedDepartmentId.HasValue)
-                        {
-                            Program.LogMessage($"ReportViewModel: Fetching complete data for department ID: {SelectedDepartmentId}");
-                            reportItems = await _reportService.GenerateDepartmentAttendanceReportAsync(
-                                SelectedDepartmentId.Value, StartDate, EndDate);
-                            Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} complete records for department");
-                        }
-                        break;
-                        
-                    case ReportTypeEnum.Company:
-                        Program.LogMessage("ReportViewModel: Fetching complete company-wide data");
-                        reportItems = await _reportService.GenerateCompanyAttendanceReportAsync(
-                            StartDate, EndDate);
-                        Program.LogMessage($"ReportViewModel: Fetched {reportItems.Count} complete records for company report");
-                        break;
+                    }
+                }
+                if (newPunches.Any())
+                {
+                    await ctx.SaveChangesAsync();
+
+                    // قدیمی‌ترین تاریخ در لاگ‌های جدید را پیدا می‌کنیم تا همه روزهای تحت پوشش قرار گیرند
+                    var earliestDate = newPunches.Min(p => p.PunchTime.Date);
+
+                    // Generate attendance rows from new punch logs (از اولین تاریخ موجود)
+                    await _attendanceService.GenerateAttendanceFromPunchLogsAsync(affectedEmpIds.ToList(), earliestDate);
+
+                    // Recalculate attendance metrics with WorkSchedule برای تمام روزهای پس از earliestDate
+                    await _attendanceService.RecalculateAttendanceMetricsForEmployeesAsync(affectedEmpIds.ToList(), earliestDate);
                 }
             }
             catch (Exception ex)
             {
-                Program.LogMessage($"ReportViewModel: Error fetching complete data - {ex.Message}");
+                ErrorMessage = $"Attendance sync failed: {ex.Message}";
             }
-            
-            return reportItems;
+            finally
+            {
+                IsAttendanceSyncing = false;
+            }
         }
-        
-        // Calculate complete statistics across all date range and pages
-        public async Task<AttendanceReportStatistics> GetCompleteStatisticsAsync()
+
+        private async Task ClearAttendanceDataAsync()
         {
-            // If we already have complete data, use it
-            if (_allReportItems.Count > 0)
-            {
-                return _reportService.GetReportStatistics(_allReportItems);
-            }
-            
-            // Otherwise, fetch all data and calculate statistics
-            var completeData = await GetCompleteDataAsync();
-            return _reportService.GetReportStatistics(completeData);
-        }
-        
-        // Calculate aggregate time values across all dates
-        public async Task<Dictionary<string, TimeSpan>> GetCompleteTimeValuesAsync()
-        {
-            var result = new Dictionary<string, TimeSpan>
-            {
-                { "LateMinutes", TimeSpan.Zero },
-                { "EarlyDepartureMinutes", TimeSpan.Zero },
-                { "OvertimeMinutes", TimeSpan.Zero }
-            };
-            
-            // If we already have complete data, use it
-            List<AttendanceReportItem> dataToProcess;
-            if (_allReportItems.Count > 0)
-            {
-                dataToProcess = _allReportItems;
-            }
-            else
-            {
-                // Otherwise, fetch all data
-                dataToProcess = await GetCompleteDataAsync();
-            }
-            
-            // Calculate totals
-            foreach (var item in dataToProcess)
-            {
-                if (item.LateMinutes.HasValue)
-                    result["LateMinutes"] += item.LateMinutes.Value;
-                if (item.EarlyDepartureMinutes.HasValue)
-                    result["EarlyDepartureMinutes"] += item.EarlyDepartureMinutes.Value;
-                if (item.OvertimeMinutes.HasValue)
-                    result["OvertimeMinutes"] += item.OvertimeMinutes.Value;
-            }
-            
-            return result;
-        }
-        
-        private async Task UpdateDisplayedItemsAsync()
-        {
-            Program.LogMessage($"ReportViewModel: Updating displayed items for page {CurrentPage} of {TotalPages}");
-            
-            ReportItems.Clear();
-            
-            if (_allReportItems.Count == 0)
-            {
-                Program.LogMessage("ReportViewModel: No items to display");
-                return;
-            }
-            
-            // Check if we're showing the summary page (last page)
-            if (_hasSummaryPage && CurrentPage == TotalPages)
-            {
-                Program.LogMessage("ReportViewModel: Displaying summary page");
-                // This is the summary page - we'll just leave it empty for now
-                // The statistics are shown separately in the UI
-                
-                // Make sure Next/Previous commands are updated
-                ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
-                ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
-                return;
-            }
-            
-            // Calculate start and end index for the current page
-            int startIndex = (CurrentPage - 1) * _pageSize;
-            if (startIndex < 0) startIndex = 0;
-            
-            // If startIndex is beyond our collection, show empty page
-            if (startIndex >= _allReportItems.Count)
-            {
-                Program.LogMessage("ReportViewModel: Start index beyond collection bounds");
-                return;
-            }
-            
-            // Calculate end index, ensuring we don't go beyond collection bounds
-            int endIndex = Math.Min(startIndex + _pageSize - 1, _allReportItems.Count - 1);
-            
-            Program.LogMessage($"ReportViewModel: Displaying items {startIndex} to {endIndex} (Total: {_allReportItems.Count})");
-            
-            // Add items for the current page
-            for (int i = startIndex; i <= endIndex; i++)
-            {
-                ReportItems.Add(_allReportItems[i]);
-            }
-            
-            // Make sure Next/Previous commands are updated
-            ((RelayCommand)NextPageCommand).NotifyCanExecuteChanged();
-            ((RelayCommand)PreviousPageCommand).NotifyCanExecuteChanged();
-            
-            Program.LogMessage($"ReportViewModel: Added {ReportItems.Count} items to display");
-        }
-        
-        // Call these methods from the View to ensure complete statistics
-        public async Task RefreshStatisticsAsync()
-        {
+            bool confirm = await ShowConfirmationDialogAsync("Delete ALL attendance data?", "This will remove all attendance and punch log records from the database. Continue?");
+            if (!confirm) return;
+            IsLoading = true;
             try
             {
-                // Calculate statistics from all data, not just current page
-                _statistics = await GetCompleteStatisticsAsync();
-                
-                // Update time values
-                var timeValues = await GetCompleteTimeValuesAsync();
-                _totalLateMinutes = timeValues["LateMinutes"];
-                _totalEarlyDepartureMinutes = timeValues["EarlyDepartureMinutes"];
-                _totalOvertimeMinutes = timeValues["OvertimeMinutes"];
-                
-                // Notify properties
-                OnPropertyChanged(nameof(Statistics));
-                OnPropertyChanged(nameof(TotalLateMinutes));
-                OnPropertyChanged(nameof(TotalLateTime));
-                OnPropertyChanged(nameof(TotalEarlyDepartureMinutes));
-                OnPropertyChanged(nameof(TotalEarlyDepartureTime));
-                OnPropertyChanged(nameof(TotalOvertimeMinutes));
-                OnPropertyChanged(nameof(TotalOvertimeTime));
+                using var ctx = _contextFactory();
+                ctx.PunchLogs.RemoveRange(ctx.PunchLogs);
+                ctx.Attendances.RemoveRange(ctx.Attendances);
+                await ctx.SaveChangesAsync();
+                _dataRefreshService.NotifyAttendanceChanged();
+                AttendanceLogs.Clear();
+                ReportItems.Clear();
+                await ShowMessageAsync("Success", "All attendance and punch log data deleted.");
             }
             catch (Exception ex)
             {
-                Program.LogMessage($"ReportViewModel: Error refreshing statistics - {ex.Message}");
+                await ShowMessageAsync("Error", $"Failed to delete attendance data: {ex.Message}");
+            }
+            finally
+            {
+                IsLoading = false;
             }
         }
     }

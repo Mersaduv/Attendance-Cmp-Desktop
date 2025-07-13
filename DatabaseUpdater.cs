@@ -29,6 +29,7 @@ namespace AttandenceDesktop
                 // Check if the Privilege column exists in the Employees table
                 bool privilegeExists = await ColumnExistsAsync(connection, "Employees", "Privilege");
                 bool privilegeDescriptionExists = await ColumnExistsAsync(connection, "Employees", "PrivilegeDescription");
+                bool leaveDaysExists = await ColumnExistsAsync(connection, "Employees", "LeaveDays");
 
                 // Add the Privilege column if it doesn't exist
                 if (!privilegeExists)
@@ -48,6 +49,16 @@ namespace AttandenceDesktop
                     command.CommandText = "ALTER TABLE Employees ADD COLUMN PrivilegeDescription TEXT NULL";
                     await command.ExecuteNonQueryAsync();
                     Program.LogMessage("PrivilegeDescription column added successfully");
+                }
+
+                // Add the LeaveDays column if it doesn't exist
+                if (!leaveDaysExists)
+                {
+                    Program.LogMessage("Adding LeaveDays column to Employees table...");
+                    using var command = connection.CreateCommand();
+                    command.CommandText = "ALTER TABLE Employees ADD COLUMN LeaveDays INTEGER NOT NULL DEFAULT 2";
+                    await command.ExecuteNonQueryAsync();
+                    Program.LogMessage("LeaveDays column added successfully");
                 }
 
                 Program.LogMessage("Database update completed successfully");

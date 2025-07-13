@@ -1,6 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using AttandenceDesktop.Data;
 using AttandenceDesktop.Models;
+using System.Linq;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace AttandenceDesktop.Services
 {
@@ -36,6 +40,55 @@ namespace AttandenceDesktop.Services
         }
         
         private ApplicationDbContext NewCtx() => _contextFactory();
+
+        // Helper method to count employee absences for a given month
+        private async Task<int> CountMonthlyAbsencesAsync(int employeeId, DateTime date)
+        {
+            using var ctx = NewCtx();
+            
+            // Calculate first and last day of the month
+            var firstDayOfMonth = new DateTime(date.Year, date.Month, 1);
+            var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
+            
+            // Get all absence days (where Status = "Absent") for the employee in this month
+            var absences = await ctx.Attendances
+                .Where(a => a.EmployeeId == employeeId)
+                .Where(a => a.Date >= firstDayOfMonth && a.Date <= lastDayOfMonth)
+                .Where(a => !a.CheckInTime.HasValue && !a.CheckOutTime.HasValue)
+                .CountAsync();
+                
+            return absences;
+        }
+        
+        // Helper method to check if an absence should be counted as leave or actual absence
+        private async Task<string> DetermineAbsenceStatusAsync(int employeeId, DateTime date)
+        {
+            using var ctx = NewCtx();
+            
+            // Get employee to check their allowed leave days
+            var employee = await ctx.Employees
+                .FirstOrDefaultAsync(e => e.Id == employeeId);
+                
+            if (employee == null) return "Absent";
+            
+            // Count absences in current month up to this date
+            var firstDayOfMonth = new DateTime(date.Year, date.Month, 1);
+            var absenceCountThisMonth = await ctx.Attendances
+                .Where(a => a.EmployeeId == employeeId)
+                .Where(a => a.Date >= firstDayOfMonth && a.Date <= date)
+                .Where(a => !a.CheckInTime.HasValue && !a.CheckOutTime.HasValue)
+                .CountAsync();
+                
+            // If absences are within allowed leave days, mark as Leave; otherwise, Absent
+            if (absenceCountThisMonth <= employee.LeaveDays)
+            {
+                return "Leave";
+            }
+            else
+            {
+                return "Absent";
+            }
+        }
         
         public async Task<List<AttendanceReportItem>> GenerateEmployeeAttendanceReportAsync(
             int employeeId, DateTime startDate, DateTime endDate)
@@ -97,14 +150,14 @@ namespace AttandenceDesktop.Services
             var attendanceDict = attendances.ToDictionary(a => a.Date.Date);
             
             double flexibleExpectedHours = employeeHasFlexibleSchedule ? employeeWorkSchedule?.TotalWorkHours ?? 0 : 0;
+
+            // Dictionary to track how many LEAVE days are already consumed per month
+            // Key format: "YYYY-MM"  (e.g. 2025-07)  Value: number of days already marked as "Leave" for that month
+            var monthlyLeaveUsed = new Dictionary<string, int>();
             
             foreach (var date in dateRange)
             {
-                // Skip dates before hire date
-                if (date.Date < hireDate.Date)
-                {
-                    continue;
-                }
+                // We no longer skip dates before hire date to ensure full range is reported
                 
                 AttendanceReportItem reportItem;
                 
@@ -251,7 +304,9 @@ namespace AttandenceDesktop.Services
                     bool isHoliday = holidays[date.Date];
                     bool isNonWorkingDay = !workingDays[date.Date];
                     
-                    var status = "Absent";
+                    // Default status
+                    string status;
+                    
                     if (isHoliday)
                     {
                         status = "Holiday";
@@ -264,6 +319,27 @@ namespace AttandenceDesktop.Services
                     {
                         // Don't mark future dates as "Absent"
                         status = "Scheduled";
+                    }
+                    else
+                    {
+                        // Regular working day without attendance
+                        // Decide between "Leave" and "Absent" based on monthly leave allowance
+                        string monthKey = $"{date.Year}-{date.Month}";
+
+                        if (!monthlyLeaveUsed.TryGetValue(monthKey, out int used))
+                        {
+                            used = 0;
+                        }
+
+                        if (used < employee.LeaveDays)
+                        {
+                            status = "Leave";
+                            monthlyLeaveUsed[monthKey] = used + 1;
+                        }
+                        else
+                        {
+                            status = "Absent";
+                        }
                     }
                     
                     reportItem = new AttendanceReportItem
@@ -338,8 +414,9 @@ namespace AttandenceDesktop.Services
             // Count present days (with check-in and check-out)
             stats.PresentDays = report.Count(r => r.CheckInTime.HasValue && r.CheckOutTime.HasValue);
             
-            // Count absent days
-            stats.AbsentDays = report.Count(r => !r.IsHoliday && !r.IsNonWorkingDay && !r.CheckInTime.HasValue);
+            // Count absent and leave days separately
+            stats.AbsentDays = report.Count(r => !r.IsHoliday && !r.IsNonWorkingDay && !r.CheckInTime.HasValue && r.Status == "Absent");
+            stats.LeaveDays = report.Count(r => !r.IsHoliday && !r.IsNonWorkingDay && !r.CheckInTime.HasValue && r.Status == "Leave");
             
             // Count late arrivals and early departures
             stats.LateArrivals = report.Count(r => r.IsLate);
@@ -411,6 +488,7 @@ namespace AttandenceDesktop.Services
             LateArrivalDays = 0;
             EarlyArrivalDays = 0;
             AbsentDays = 0;
+            LeaveDays = 0;
             LateArrivals = 0;
             EarlyDepartures = 0;
             EarlyArrivals = 0;
@@ -425,6 +503,7 @@ namespace AttandenceDesktop.Services
         public int LateArrivalDays { get; set; }
         public int EarlyArrivalDays { get; set; }
         public int AbsentDays { get; set; }
+        public int LeaveDays { get; set; }
         public int LateArrivals { get; set; }
         public int EarlyDepartures { get; set; }
         public int EarlyArrivals { get; set; }
@@ -432,7 +511,7 @@ namespace AttandenceDesktop.Services
         public int NonWorkingDays { get; set; }
         public int OvertimeDays { get; set; }
         
-        public double AttendanceRate => TotalDays > 0 ? (double)PresentDays / TotalDays * 100 : 0;
+        public double AttendanceRate => TotalDays > 0 ? (double)(PresentDays + LeaveDays) / TotalDays * 100 : 0;
         public double PunctualityRate => PresentDays > 0 ? (double)(PresentDays - LateArrivals) / PresentDays * 100 : 0;
         public double OvertimeRate => PresentDays > 0 ? (double)OvertimeDays / PresentDays * 100 : 0;
         public double EarlyArrivalRate => PresentDays > 0 ? (double)EarlyArrivals / PresentDays * 100 : 0;

@@ -69,6 +69,9 @@ namespace AttandenceDesktop.Models
         // This defines how many hours the employee must work each day, regardless of when they work
         public double RequiredWorkHoursPerDay { get; set; } = 8.0;
         
+        // Number of leave days allowed for the employee
+        public int LeaveDays { get; set; } = 2;
+        
         // BEGIN ADD
         // Internal identifier (digits or letters) used for attendance devices
         [StringLength(50)]

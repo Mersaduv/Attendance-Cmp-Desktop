@@ -1049,6 +1049,64 @@ namespace AttandenceDesktop.Services
             // Notify that attendance data has changed
             _dataRefreshService.NotifyAttendanceChanged();
         }
+
+        public async Task GenerateAttendanceFromPunchLogsAsync(List<int> employeeIds, DateTime? since = null)
+        {
+            if (employeeIds == null || !employeeIds.Any()) return;
+            using var ctx = NewCtx();
+            DateTime minDate = since?.Date ?? DateTime.Today.AddDays(-30);
+            var logsQuery = ctx.PunchLogs
+                .Include(p => p.Employee)
+                .Where(p => employeeIds.Contains(p.EmployeeId) && p.PunchTime.Date >= minDate);
+
+            var logs = await logsQuery.ToListAsync();
+            var grouped = logs.GroupBy(l => new { l.EmployeeId, Day = l.PunchTime.Date });
+
+            foreach (var g in grouped)
+            {
+                DateTime? firstIn = g.Where(x => x.PunchType == PunchType.CheckIn).OrderBy(x => x.PunchTime).FirstOrDefault()?.PunchTime;
+                DateTime? lastOut = g.Where(x => x.PunchType == PunchType.CheckOut).OrderByDescending(x => x.PunchTime).FirstOrDefault()?.PunchTime;
+                bool hasIn = firstIn.HasValue;
+                bool hasOut = lastOut.HasValue;
+                // Fallback: if no explicit CheckIn but there is only one record treat it as CheckIn
+                if (!hasIn && !hasOut)
+                {
+                    var only = g.Min(x => x.PunchTime);
+                    firstIn = only;
+                    hasIn = true;
+                }
+                 
+                var attendance = await ctx.Attendances.FirstOrDefaultAsync(a => a.EmployeeId == g.Key.EmployeeId && a.Date == g.Key.Day);
+                if (attendance == null)
+                {
+                    attendance = new Attendance
+                    {
+                        EmployeeId = g.Key.EmployeeId,
+                        Date = g.Key.Day,
+                        CheckInTime = firstIn,
+                        CheckOutTime = hasIn && hasOut && lastOut > firstIn ? lastOut : null,
+                        Notes = "Imported from device logs",
+                        WorkDuration = (hasIn && hasOut && lastOut > firstIn) ? lastOut.Value - firstIn.Value : null,
+                        IsComplete = hasIn && hasOut && lastOut > firstIn
+                    };
+                    ctx.Attendances.Add(attendance);
+                }
+                else
+                {
+                    // Update if missing times
+                    if (hasIn && (!attendance.CheckInTime.HasValue || firstIn < attendance.CheckInTime))
+                        attendance.CheckInTime = firstIn;
+                    if (hasOut && (!attendance.CheckOutTime.HasValue || lastOut > attendance.CheckOutTime))
+                        attendance.CheckOutTime = lastOut;
+                    if (attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue && attendance.CheckOutTime > attendance.CheckInTime)
+                    {
+                        attendance.WorkDuration = attendance.CheckOutTime - attendance.CheckInTime;
+                        attendance.IsComplete = true;
+                    }
+                }
+            }
+            await ctx.SaveChangesAsync();
+        }
     }
     
     // Class to hold attendance statistics

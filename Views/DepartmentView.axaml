@@ -25,14 +25,11 @@
             <TextBlock Text="Departments" Classes="header" />
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button Content="Add" Click="OnAddClick" Classes="success" Width="80" />
-                <Button Content="Edit" Click="OnEditClick" Classes="primary" Width="80"
-                        IsEnabled="{Binding SelectedDepartment, Converter={StaticResource NullToBool}}" />
-                <Button Content="Delete" Click="OnDeleteClick" Classes="danger" Width="80"
-                        IsEnabled="{Binding SelectedDepartment, Converter={StaticResource NullToBool}}" />
-                <Button Content="Sync" Command="{Binding SyncDepartmentsCommand}" Classes="accent" Width="80"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
-                        ToolTip.Tip="Sync departments from ZKTeco devices" />
-                <Button Content="Reload" Click="OnDebugLoadClick" Width="80" />
+                <!-- <Button Content="Edit" Click="OnEditClick" Classes="primary" Width="80"
+                        IsEnabled="{Binding SelectedDepartment, Converter={StaticResource NullToBool}}" /> -->
+                <!-- <Button Content="Delete" Click="OnDeleteClick" Classes="danger" Width="80"
+                        IsEnabled="{Binding SelectedDepartment, Converter={StaticResource NullToBool}}" /> -->
+                <!-- <Button Content="Reload" Click="OnDebugLoadClick" Width="80" /> -->
             </StackPanel>
         </DockPanel>
         
@@ -74,7 +71,7 @@
                                     </Grid.ColumnDefinitions>
                                     <Border Grid.Column="0" Grid.ColumnSpan="2" Background="#f0f0f0" CornerRadius="4" Margin="0,0,8,0">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Id}" Width="40" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold" />
+                                            <!-- <TextBlock Text="{Binding Id}" Width="40" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold" /> -->
                                             <TextBlock Text="{Binding Name}" Foreground="Black" VerticalAlignment="Center" Margin="8,0" FontSize="14" />
                                         </StackPanel>
                                     </Border>
